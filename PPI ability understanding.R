@@ -21,6 +21,9 @@ all.data$response.cat[all.data$response.diff == 0 ] <- "moderate"
 all.data$response.cat[all.data$response.diff > 0 & all.data$response.diff < 1] <- "mod alt"
 all.data$response.cat[all.data$response.diff == 1] <- "alt"
 
+#Gender category assign
+all.data$Gender[all.data$Gender == 1] <- "Male"
+all.data$Gender[all.data$Gender == 2] <- "Female"
 
 #so, 1 = 100% altruistic and -1 = 100% egotistic
 
@@ -101,6 +104,37 @@ with(PR.data, plot(log.response.diff, log10(Avg_SC_PR_P3)))
      
 with(PR.data, plot(response.diff, Avg_Succ_PR_P3))
 with(PR.data, plot(response.diff, Avg_Lat_PR_P3))
+
+library(ggplot2)
+
+ggplot(data = PR.data,
+       mapping = aes(x = Gender, y = Avg_SC_PR_P3, colour = response.cat)) +
+  geom_boxplot() +
+  labs(title = "Differences in SC for response type and gender",
+       x = "Gender",
+       y = "SC score",
+       colour = "Parent\nresponse type") +
+  theme(text = element_text(size = 14))
+
+ggplot(data = PR.data,
+       mapping = aes(x = Gender, y = Avg_Succ_PR_P3, colour = response.cat)) +
+  geom_boxplot() +
+  labs(title = "Differences in Succ for response type and gender",
+       x = "Gender",
+       y = "Succ score",
+       colour = "Parent\nresponse type") +
+  theme(text = element_text(size = 14))
+
+ggplot(data = PR.data,
+       mapping = aes(x = Gender, y = Avg_Lat_PR_P3, colour = response.cat)) +
+  geom_boxplot() +
+  labs(title = "Differences in Lat for response type and gender",
+       x = "Gender",
+       y = "Lat score",
+       colour = "Parent\nresponse type") +
+  theme(text = element_text(size = 14))
+
+
 
 #Froggy task
 
