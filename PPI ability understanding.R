@@ -203,6 +203,7 @@ wilcox.test(Avg_Succ_FT_P3 ~ Gender, data = FT.data)
 wilcox.test(Avg_LAT1_FT_P3 ~ Gender, data = FT.data)
 wilcox.test(Avg_LAT2_FT_P3 ~ Gender, data = FT.data)
 
+
 #social games & CA IT
 sg.sc.it.corr <- cor.test(x = IT.data$Pi_social_games_freq_p1_fixed_777, y = IT.data$Avg_SC_IT_P3, method = 'spearman')
 sg.sc.it.corr
@@ -237,6 +238,34 @@ sg.lat1.ft.corr
 
 sg.lat2.ft.corr <- cor.test(x = FT.data$Pi_social_games_freq_p1_fixed_777, y = FT.data$Avg_LAT2_FT_P3, method = 'spearman')
 sg.lat2.ft.corr
+
+#Check age and ability for PR
+
+ag.sc.pr.corr <- cor.test(x = PR.data$Age_p1, y = PR.data$Avg_SC_PR_P3, method = 'spearman')
+ag.sc.pr.corr
+
+ag.succ.pr.corr <- cor.test(x = PR.data$Age_p1, y = PR.data$Avg_Succ_PR_P3, method = 'spearman')
+ag.succ.pr.corr
+
+ag.lat.pr.corr <- cor.test(x = PR.data$Age_p1, y = PR.data$Avg_Lat_PR_P3, method = 'spearman')
+ag.lat.pr.corr
+
+#Check age and ability for FT
+
+ag.sc.ft.corr <- cor.test(x = FT.data$Age_p1, y = FT.data$Avg_SC_FT_P3, method = 'spearman')
+ag.sc.ft.corr
+
+ag.succ.ft.corr <- cor.test(x = FT.data$Age_p1, y = FT.data$Avg_Succ_FT_P3, method = 'spearman')
+ag.succ.ft.corr
+
+ag.lat1.ft.corr <- cor.test(x = FT.data$Age_p1, y = FT.data$Avg_LAT1_FT_P3, method = 'spearman')
+ag.lat1.ft.corr
+
+ag.lat2.ft.corr <- cor.test(x = FT.data$Age_p1, y = FT.data$Avg_LAT2_FT_P3, method = 'spearman')
+ag.lat2.ft.corr
+
+
+
 
 
 # Simple linear regression models -----------------------------------------
@@ -349,18 +378,19 @@ summary(FT.SC.aov)
 FT.Succ.aov <- aov(Avg_Succ_FT_P3 ~ response.cat, data = FT.data)
 summary(FT.Succ.aov)
 
-FT.Lat1.aov <- aov(Avg_LAT1_FT_P3 ~ response.cat, data = FT.data)
+#ANCOVA
+
+FT.Lat1.aov <- aov(Avg_LAT1_FT_P3 ~ response.cat*Age_p1, data = FT.data)
 summary(FT.Lat1.aov)
 
-FT.Lat2.aov <- aov(Avg_LAT2_FT_P3 ~ response.cat, data = FT.data)
+FT.Lat2.aov <- aov(Avg_LAT2_FT_P3 ~ response.cat*Age_p1, data = FT.data)
 summary(FT.Lat2.aov)
 
-#nonparametric FT
+#nonparametric FT - not incl latency because age differences
 
 FT.data$response.cat <- as.factor(FT.data$response.cat)
 
 
 kruskal.test(Avg_SC_FT_P3 ~ response.cat, data = FT.data)
 kruskal.test(Avg_Succ_FT_P3 ~ response.cat, data = FT.data)
-kruskal.test(Avg_LAT1_FT_P3 ~ response.cat, data = FT.data)
-kruskal.test(Avg_LAT2_FT_P3 ~ response.cat, data = FT.data)
+
