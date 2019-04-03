@@ -52,11 +52,19 @@ with(P3.data, hist(response.diff,breaks = 5,
                    xlab = "ego/alt score",
                    main = "hist parent response"))
 
+skewness(P3.data$response.diff, na.rm = TRUE)
+
 #IT task - ability data
 
 with(IT.data, hist(Avg_SC_IT_P3,breaks = 5,
                    xlab = "spatial coordination scores",
                    main = "indep spatial coordination"))
+
+skewness(IT.data$Avg_SC_IT_P3, na.rm = TRUE)
+
+IT.data$sq.Avg_SC_IT_P3 <- with(IT.data, (Avg_SC_IT_P3)^2)
+
+skewness(IT.data$sq.Avg_SC_IT_P3, na.rm = TRUE)
 
 with(IT.data, hist(log10(Avg_SC_IT_P3),breaks = 5,
                    xlab = "log spatial coordination scores",
@@ -80,6 +88,12 @@ with(IT.data, plot(response.diff, log10(Avg_Lat_IT_P3)))
 with(PR.data, hist(Avg_SC_PR_P3,breaks = 5,
                    xlab = "spatial coordination scores",
                    main = "parallel roles spatial coordination"))
+
+skewness(PR.data$Avg_SC_PR_P3, na.rm = TRUE)
+
+library(MASS)
+
+?boxcox
 
 with(PR.data, hist(log10(Avg_SC_PR_P3),breaks = 5,
                    xlab = "log spatial coordination scores",
@@ -301,9 +315,6 @@ PR_SC.model <- lm(Avg_SC_PR_P3 ~ response.diff + Gender, data = PR.data)
 PR_SC.model
 summary(PR_SC.model)
 
-log.PR_SC.model <- lm(log10(Avg_SC_PR_P3) ~ response.diff + Gender, data = PR.data)
-log.PR_SC.model
-summary(log.PR_SC.model)
 
 #PR task Succ
 
@@ -316,10 +327,6 @@ summary(PR_Succ.model)
 PR_Lat.model <- lm(Avg_Lat_PR_P3 ~ response.diff, data = PR.data)
 PR_Lat.model
 summary(PR_Lat.model)
-
-log.PR_Lat.model <- lm(log10(Avg_Lat_PR_P3) ~ response.diff, data = PR.data)
-log.PR_Lat.model
-summary(log.PR_Lat.model)
 
 #FT task SC
 
@@ -350,8 +357,11 @@ summary(FT_Lat2.model)
 
 library(ggfortify)
 
+autoplot(FT_SC.model)
+autoplot(FT_Succ.model)
+autoplot(FT_Lat1.model)
 autoplot(FT_Lat2.model)
-autoplot(log.PR_Lat.model)
+
 
 
 # Categorical analyses ----------------------------------------------------
@@ -393,4 +403,24 @@ FT.data$response.cat <- as.factor(FT.data$response.cat)
 
 kruskal.test(Avg_SC_FT_P3 ~ response.cat, data = FT.data)
 kruskal.test(Avg_Succ_FT_P3 ~ response.cat, data = FT.data)
+
+
+# Transformed data analyses -----------------------------------------------
+
+
+#Froggy Task
+
+#boxcox transformation on FT model
+
+boxcox(FT_Lat2.model,lambda = seq(-3,3))
+
+#lambda -.5
+
+bc.FT_Lat2.model <- lm((Avg_LAT2_FT_P3)^-.5 ~ response.diff, data = FT.data)
+
+summary(bc.FT_Lat2.model)
+bc.FT_Lat2.model
+
+library(ggfortify)
+autoplot(bc.FT_Lat2.model)
 
