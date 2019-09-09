@@ -1,5 +1,4 @@
-all.data = read.csv("P1_PP1_P3_SocialContext_Reliability_Data.csv", stringsAsFactors = FALSE)
-
+all.data = read.csv("P1_PP1_P3_Reliability_SocialContext_PPIP1.csv", stringsAsFactors = FALSE)
 
 options(scipen = 999)
 
@@ -9,27 +8,57 @@ all.data[all.data == 99] <- NA
 all.data[all.data == 777] <- NA
 
 
-# PPI Phase 1 reliabilities -----------------------------------------------
+# PPI Phase 1 ego/alt reliabilities -----------------------------------------------
 
 
+##P1 response reliabilities - ego/alt category and REL - Beth and Nic##
+##FIRST PASS## - BOTH CODE ALL AND DISCUSS DISAGREEMENTS
 
-##P1 1st response reliabilities - ego/alt category and REL - Beth and Nic##
-
-install.packages("lpSolve")
 library(lpSolve)
-install.packages("irr")
+
 library(irr)
 
 
-
-##need to transfer all collums into one nic rating and one beth rating then take reliabilities for all
-
-#Join all parent response collums to calculate kappa
-
-
-## Cooperation opinion first responses reliability ##
+## Cooperation indep/egp all 999s removed reliability P1 ##
 kappa2(all.data[,c(10,11)], "unweighted")
 
+## Cooperation indep/egp all 999s removed reliability P3 ##
+kappa2(all.data[,c(134,135)], "unweighted")
+
+##P1 response reliabilities - ego/alt category and REL - Beth and Nic##
+##SECOND PASS## - NB CODE 30%
+
+library(lpSolve)
+
+library(irr)
+
+#datasubset for 30%
+
+rel.df <- all.data[which(all.data$Reliability_2P_inout == 1),]
+View(rel.df)
+
+## Cooperation indep/egp all 999s removed reliability P1 ##
+kappa2(rel.df[,c(13,14)], "unweighted")
+
+
+##P1 response reliabilities - ego/alt category and REL - Beth and Nic##
+##THIRD PASS## - NB CODE 30%
+
+
+library(lpSolve)
+
+library(irr)
+
+#datasubset for 30%
+
+rel.df <- all.data[which(all.data$Reliability_3P_inout == 1),]
+rel.df_naomit <- subset(rel.df, select = c("Reliability_3P_inout", "Op_coop_REL_NB_all_3", "Op_coop_REL_BG_all_3"))
+View(rel.df_naomit)
+
+rel.df_naomit <- na.omit(rel.df_naomit)
+
+## Cooperation indep/egp all 999s removed reliability P1 ##
+kappa2(rel.df_naomit[,c(2,3)], "unweighted")
 
 
 # P3 Social context reliabilities -----------------------------------------
@@ -100,8 +129,9 @@ all.data$CR_JCE_MP <- with(all.data, (CR_T1_JCE_MP+CR_T2_JCE_MP)/2)
 ##subset for just P3 E-C social context codes
 sc.df_finals <- subset(all.data, select = c(1, 147:179))
 
-
 write.csv(sc.df_finals, file = "P3_sc_finalscores.csv")
+
+#created new datafile to transform data file from wide to long using multiple columns...(probably a code for this but can't sort it out)
 
 #Create datasets for each group of coders and add back in 999 values 0's for reliability
 ##used 0 instead of 999 as 999 overinflates the ICC agreement rating
