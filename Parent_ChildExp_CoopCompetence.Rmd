@@ -1,5 +1,5 @@
 ---
-title: "Parent_ChildExpCooperativeCompetence"
+title: "Maternal Attributes Enhance Infant Cooperation"
 author: "Nichole Breeland"
 date: "19/02/2020"
 output: html_document
@@ -7,15 +7,31 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+options(width = 60)
+library(knitr)
+opts_chunk$set(tidy.opts=list(width.cutoff=60),tidy=TRUE)
+df <- read.csv("ParentChild_Coop_ReducedData.csv", stringsAsFactors = FALSE)
 ```
+
 
 ```{r load packages, include=FALSE}
 library(car)
 library(e1071)
 library(MASS)
+library(stargazer)
+library(rockchalk)
+library(mice)
+library(miceadds)
+library(polycor)
+library(tidyverse)
+library(tidyverse)
+library(lavaan)
+library(semTools)
+library(lavaanPlot)
 ```
-##Document and Variable set up
-```{r import dataframes, include=FALSE}
+
+```{r cleaned data file set up,eval = FALSE, include = FALSE}
+
 #Dataset with cooperative competence measures and parent variables (CVS and Big 5)
 all.data = read.csv("P1_PPI_Ability_Anticipation_Workingset.csv", stringsAsFactors = FALSE)
 #Dataset with SES (parent education), Infant Ethnicity, P5 and P6 Age
@@ -24,19 +40,15 @@ eth.data[eth.data == 999] <- NA
 all.data[all.data == 999] <- NA
 all.data[all.data == 777] <- NA
 options(scipen = 999) #turns off scientific notation
-```
 
-```{r assign gender label, include=FALSE}
 #Gender category assign
 all.data$Gender_Label[all.data$Gender == 1] <- "Male"
 all.data$Gender_Label[all.data$Gender == 2] <- "Female"
-```
 
-```{r create  parent cooperative value score}
+#Create CVS 
 all.data$response.diff = with(all.data, Op_coop_Alt_Avg_p1 - Op_coop_Ego_Avg_p1)
-```
 
-```{r recode and score Big 5 parent personality data, include=FALSE}
+#Score Big 5
 all.data$NeurVol_2 = recode(all.data$NeurVol_2, "1=7; 2=6; 3=5; 4=4; 5=3;6=2; 7=1")
 all.data$NeurVol_4 = recode(all.data$NeurVol_4, "1=7; 2=6; 3=5; 4=4; 5=3;6=2; 7=1")
 all.data$NeurVol_6 = recode(all.data$NeurVol_6, "1=7; 2=6; 3=5; 4=4; 5=3;6=2; 7=1")
@@ -91,9 +103,6 @@ all.data$Agree = rowMeans(all.data[,70:89], na.rm=TRUE)
 all.data$Cons = rowMeans(all.data[,90:109], na.rm=TRUE)
 all.data$Extra = rowMeans(all.data[,110:129], na.rm=TRUE)
 all.data$Open = rowMeans(all.data[,130:149], na.rm=TRUE)
-```
-
-```{r right join and score P6 parent IPIP6, include=FALSE}
 
 #load and right join
 ipip.df <- read.csv("P6_IPIP6.csv", stringsAsFactors = FALSE)
@@ -133,978 +142,460 @@ all.data$IPIP6_HonHum <- rowMeans(subset(all.data, select = c("IPIP6_Q6_r", "IPI
 
 sum(all.data$IPIP6_HonHum)
 
+#Make cleaned datafile with variables for analysis only
+df <- subset(all.data, select = c("ID_num", "Study_inout","Parent_Type_p1","PCG_p1",
+                                  "Parent_Type_p3", "PCG_p3" , "Parent_Type_p5",
+                                  "PCG_p5","Gender", "Age_p1", "Age_p3",
+                                  "Avg_SC_PR_P3", "Avg_Succ_PR_P3", "Avg_Lat_PR_P3",
+                                  "Avg_SC_FT_P3", "Avg_Succ_FT_P3","Avg_LAT1_FT_P3",
+                                  "Avg_LAT2_FT_P3", "Pi_social_games_freq_p3_fixed",
+                                  "Gender_Label", "response.diff", "Neur" ,"Agree",
+                                  "Cons","Extra","Open","Parent_Type_p6","PCG_p6", 
+                                  "IPIP6_Cons","IPIP6_Neur","IPIP6_Open","IPIP6_HonHum",
+                                  "IPIP6_Extra", "IPIP6_Agree"))
+
+ibq.df <- read.csv("IBQ_P1_Masterfile.csv", stringsAsFactors = FALSE)
+ibq.df <- subset(ibq.df, select = c("ID_num", "act","dist","fear","dura","smil","hip",
+                                    "lip","soot","fall","cud","perc","sad" ,"app",
+                                    "voc","SUR","NEG", "REG"))
+df <- merge(x = df, y = ibq.df, by = "ID_num", all = TRUE)
+df[df == 999] <- NA
+summary(df)
+str(df)
+write.csv(df, "ParentChild_Coop_ReducedData.csv")
 ```
 
+```{r data subset creation, results = 'hide', include = FALSE}
 
-```{r data subset creation}
-#Main data set for ORCA all study in group - moms and study in only
-P1.data_pcgm <- all.data[which(all.data$Study_inout == 1 & all.data$Parent_Type_p1 == 2),]
-#Main data set for ORCA all study in group moms only - Ethnicity, SES, and P5/P6 age dataframe
-P1.eth<- eth.data[which(eth.data$Study_inout == 1 & eth.data$Parent_Type_p1 == 2),]
-#Parallel roles study in data subset - Mothers only
-PR_pcgm.data <- all.data[which(all.data$InOut_PR_P3 == 1 & all.data$Study_inout == 1 & all.data$Parent_Type_p1 == 2),]
-#Froggy task study in data subset - Mothers only
-FT_pcgm.data <- all.data[which(all.data$InOut_FT_P3 == 1 & all.data$Study_inout == 1 & all.data$Parent_Type_p1 == 2),]
+#Exclude participants who did not complete Phase 3
+df$Study_inout[is.na(df$Age_p3)] <- 0
 
-####Parent personality datasets
-#Dataset that includes mothers who completed forms at phase 5
-personality.df_pcgm <- all.data[which(all.data$Study_inout == 1 & all.data$Parent_Type_p5 == 2),]
+#Exclude all participants who did not complete BOTH cooperative tasks at Phase 3
+df$Study_inout[is.na(df$Avg_SC_PR_P3) 
+               & is.na(df$Avg_Succ_PR_P3)  
+               & is.na(df$Avg_Lat_PR_P3)
+               & is.na(df$Avg_SC_FT_P3)
+               & is.na(df$Avg_Succ_FT_P3)
+               & is.na(df$Avg_LAT1_FT_P3)
+               & is.na(df$Avg_LAT2_FT_P3)] <- 0
 
-#Dataset that includes mothers completed forms at phase 1 and Phase 5
-personality.values.df_pcgm <- all.data[which(all.data$Study_inout == 1 & all.data$Parent_Type_p5 == 2 & all.data$Parent_Type_p1 == 2),]
+#Study in data including mothers at P1, P5, and P6 or missing data for imputation
 
-#Parallel roles study in data subset - subset of infants study in for PR Phase 3 whos mothers who completed forms at phase 1 and phase 5
-PR_pcgm.data.p3.p5 <- all.data[which(all.data$InOut_PR_P3 == 1 & all.data$Study_inout == 1 & all.data$Parent_Type_p1 == 2 & all.data$Parent_Type_p5 == 2),]
+df.m <- df[which(df$Study_inout == 1),]
 
-#Complementary roles study in data subset - subset of infants study in for FT Phase 3 whos mothers who completed forms at phase 1 and phase 5
-FT_pcgm.data.p3.p5 <- all.data[which(all.data$InOut_FT_P3 == 1 & all.data$Study_inout == 1 & all.data$Parent_Type_p1 == 2 & 
-                                       all.data$Parent_Type_p5 == 2),]
+df.m <- df.m[which(df.m$Parent_Type_p1 == 2 
+                     | is.na(df.m$Parent_Type_p1)
+                     & df.m$Parent_Type_p5 == 2
+                     | is.na(df.m$Parent_Type_p5)
+                     & df.m$Parent_Type_p6 == 2
+                     | is.na(df.m$Parent_Type_p6)),]
+
+
+
+summary(df.m) 
+
+#Exclude IBQ subscale, constants, and admin variables data from df
+df.m <- subset(df.m, select = c("ID_num","Study_inout",
+                                         "Parent_Type_p1" ,"PCG_p1" ,
+                                         "Parent_Type_p3","PCG_p3",
+                                         "Parent_Type_p5" ,"PCG_p5" ,
+                                         "Parent_Type_p6","PCG_p6","Gender",
+                                         "Gender_Label","Age_p1","Age_p3","Avg_SC_PR_P3",
+                                         "Avg_Succ_PR_P3", "Avg_Lat_PR_P3","Avg_SC_FT_P3",
+                                         "Avg_Succ_FT_P3","Avg_LAT1_FT_P3","Avg_LAT2_FT_P3",
+                                         "Pi_social_games_freq_p3_fixed","response.diff" ,
+                                         "Neur","Agree" ,"Cons" ,"Extra"  ,"Open" ,
+                                         "IPIP6_Cons",
+                                         "IPIP6_Neur","IPIP6_Open",
+                                         "IPIP6_HonHum","IPIP6_Extra",
+                                         "IPIP6_Agree","SUR","NEG","REG"))
+
+#cleaned subset for imputations with extra variables removed as to not throw off predictor matrix
+df.c <- subset(df.m, select = c("Gender", "Age_p3", "Avg_SC_PR_P3",
+                                "Avg_Succ_PR_P3", "Avg_Lat_PR_P3","Avg_SC_FT_P3",
+                                "Avg_Succ_FT_P3","Avg_LAT1_FT_P3","Avg_LAT2_FT_P3",
+                                "Pi_social_games_freq_p3_fixed","response.diff" ,
+                                "Neur","Agree" ,"Cons" ,"Extra"  ,"Open","SUR","NEG","REG",
+                                "IPIP6_Cons", "IPIP6_Neur","IPIP6_Open", "IPIP6_HonHum",
+                                "IPIP6_Extra", "IPIP6_Agree"))
 ```
 
+# Dealing with missing data
 
-## Visualizing the data/Descriptives
+## Identify percent missing
+```{r percent missing}
+#percent missing for each variable
+colMeans(is.na(df.c)*100)
 
-### Parent SES determined by education level
-```{r}
-##Education/SES descriptives
-P1.eth$Edu_P5_yn_label[P1.eth$Edu_P5_yn == 1] <- "Completed P5"
-P1.eth$Edu_P5_yn_label[P1.eth$Edu_P5_yn == 0] <- "Completed P4"
-
-#Data frequencies used from which phase. P4 data was only used if P5 data was missing as P5 had the highest completion rate
-table(P1.eth$Edu_P5_yn_label)
-
-P1.eth$Edu_Secondary_label[P1.eth$Parent_HighestSchoolQual_p5 == 0] <- "None"
-P1.eth$Edu_Secondary_label[P1.eth$Parent_HighestSchoolQual_p5 == 1] <- "5th Form/Year 11"
-P1.eth$Edu_Secondary_label[P1.eth$Parent_HighestSchoolQual_p5 == 2] <- "6th Form/Year 12/Certificate/GCSE (UK)"
-P1.eth$Edu_Secondary_label[P1.eth$Parent_HighestSchoolQual_p5 == 3] <- "7th Form/Year13/Bursary/A level (UK)"
-P1.eth$Edu_Secondary_label[P1.eth$Parent_HighestSchoolQual_p5 == 4] <- "Other"
-P1.eth$Edu_Secondary_label[is.na(P1.eth$Parent_HighestSchoolQual_p5)] <- "Unknown/Missing"
-
-#Secondary school completion rate
-table(P1.eth$Edu_Secondary_label)
-
-#Highest level of tertiary education achieved
-P1.eth$Edu_Tert_label[P1.eth$Parent_otherqual_spec_p5 == 0] <- "None"
-P1.eth$Edu_Tert_label[P1.eth$Parent_otherqual_spec_p5 == 1] <- "Bachelors/Diploma (up to 3 years education post secondary school)"
-P1.eth$Edu_Tert_label[P1.eth$Parent_otherqual_spec_p5 == 2] <- "PostGrad/Masters (up to 5 years education post secondary school)"
-P1.eth$Edu_Tert_label[P1.eth$Parent_otherqual_spec_p5 == 3] <- "PhD (more than 5 yrs education post secondary school)"
-P1.eth$Edu_Tert_label[P1.eth$Parent_otherqual_spec_p5 == 4] <- "Other"
-P1.eth$Edu_Tert_label[is.na(P1.eth$Parent_otherqual_spec_p5)] <- "Unknown/Missing"
-
-table(P1.eth$Edu_Tert_label)
-
-```
-
-  
-### Parent Cooperative Value Score (CVS) & Social Games Frequency
-
-```{r CVS visuals}
-with(P1.data_pcgm, hist(response.diff,breaks = 10,
-                   xlab = "ego/alt score",
-                   main = "hist parent response"))
-mean(P1.data_pcgm$response.diff, na.rm = TRUE)
-sd(P1.data_pcgm$response.diff, na.rm = TRUE)
-range(P1.data_pcgm$response.diff, na.rm = TRUE)
-# of complete observations
-sum(!is.na(P1.data_pcgm$response.diff)) 
-```
-
-```{r parent frequency of social games p1}
-with(P1.data_pcgm, hist(Pi_social_games_freq_p1_fixed,breaks = 10,
-                   xlab = "# social games per week",
-                   main = "hist parent report playing \n social games"))
-mean(P1.data_pcgm$Pi_social_games_freq_p1_fixed, na.rm = TRUE)
-sd(P1.data_pcgm$Pi_social_games_freq_p1_fixed, na.rm = TRUE)
-range(P1.data_pcgm$Pi_social_games_freq_p1_fixed, na.rm = TRUE)
-# of complete observations
-sum(!is.na(P1.data_pcgm$Pi_social_games_freq_p1_fixed)) 
-```
-
-### Parent Personality Big 5 Five Factor Model (Study 1)
-```{r parent FFM visuals}
-#Neur
-with(personality.df_pcgm, hist(Neur,breaks = 10,
-                          xlab = "Neuroticism",
-                          main = "Neur Personality \n distribution"))
-skewness(personality.df_pcgm$Neur, na.rm = TRUE)
-shapiro.test(personality.df_pcgm$Neur)
-
-mean(personality.df_pcgm$Neur, na.rm = TRUE)
-sd(personality.df_pcgm$Neur, na.rm = TRUE)
-range(personality.df_pcgm$Neur, na.rm = TRUE)
-# of complete observations
-sum(!is.na(personality.df_pcgm$Neur)) 
-
-#Openness
-with(personality.df_pcgm, hist(Open,breaks = 10,
-                          xlab = "Openness",
-                          main = "Openness Personality \n distribution"))
-skewness(personality.df_pcgm$Open, na.rm = TRUE)
-shapiro.test(personality.df_pcgm$Open)
-
-mean(personality.df_pcgm$Open, na.rm = TRUE)
-sd(personality.df_pcgm$Open, na.rm = TRUE)
-range(personality.df_pcgm$Open, na.rm = TRUE)
-# of complete observations
-sum(!is.na(personality.df_pcgm$Open)) 
-
-#Conscientiousness
-
-with(personality.df_pcgm, hist(Cons,breaks = 10,
-                          xlab = "Conscientiousness",
-                          main = "Cons Personality \n distribution"))
-skewness(personality.df_pcgm$Cons, na.rm = TRUE)
-shapiro.test(personality.df_pcgm$Cons)
-
-mean(personality.df_pcgm$Cons, na.rm = TRUE)
-sd(personality.df_pcgm$Cons, na.rm = TRUE)
-range(personality.df_pcgm$Cons, na.rm = TRUE)
-# of complete observations
-sum(!is.na(personality.df_pcgm$Cons)) 
-
-#Extraversion
-with(personality.df_pcgm, hist(Extra,breaks = 10,
-                          xlab = "Extraversion",
-                          main = "Extra Personality \n distribution"))
-skewness(personality.df_pcgm$Extra, na.rm = TRUE)
-shapiro.test(personality.df_pcgm$Extra)
-
-mean(personality.df_pcgm$Extra, na.rm = TRUE)
-sd(personality.df_pcgm$Extra, na.rm = TRUE)
-range(personality.df_pcgm$Extra, na.rm = TRUE)
-# of complete observations
-sum(!is.na(personality.df_pcgm$Extra)) 
-
-#Agreeableness
-with(personality.df_pcgm, hist(Agree,breaks = 10,
-                               xlab = "Agreeableness",
-                               main = "Agree Personality \n distribution"))
-skewness(personality.df_pcgm$Agree, na.rm = TRUE)
-shapiro.test(personality.df_pcgm$Agree)
-
-mean(personality.df_pcgm$Agree, na.rm = TRUE)
-sd(personality.df_pcgm$Agree, na.rm = TRUE)
-range(personality.df_pcgm$Agree, na.rm = TRUE)
-# of complete observations
-sum(!is.na(personality.df_pcgm$Agree)) 
-```
-### Parent Personality Six Factor Model (IPIP-6) Study 2
-```{r parent 6FM visuals}
-#Openness
-with(personality.df_pcgm, hist(IPIP6_Open,breaks = 10,
-                               xlab = "6FM Openness",
-                               main = "Openness Personality \n distribution"))
-skewness(personality.df_pcgm$IPIP6_Open, na.rm = TRUE)
-shapiro.test(personality.df_pcgm$IPIP6_Open)
-
-mean(personality.df_pcgm$IPIP6_Open, na.rm = TRUE)
-sd(personality.df_pcgm$IPIP6_Open, na.rm = TRUE)
-range(personality.df_pcgm$IPIP6_Open, na.rm = TRUE)
-# of complete observations
-sum(!is.na(personality.df_pcgm$IPIP6_Open)) 
-
-#Neuroticism
-with(personality.df_pcgm, hist(IPIP6_Neur,breaks = 10,
-                               xlab = "6FM Neuroticism",
-                               main = "Neurness Personality \n distribution"))
-skewness(personality.df_pcgm$IPIP6_Neur, na.rm = TRUE)
-shapiro.test(personality.df_pcgm$IPIP6_Neur)
-
-mean(personality.df_pcgm$IPIP6_Neur, na.rm = TRUE)
-sd(personality.df_pcgm$IPIP6_Neur, na.rm = TRUE)
-range(personality.df_pcgm$IPIP6_Neur, na.rm = TRUE)
-# of complete observations
-sum(!is.na(personality.df_pcgm$IPIP6_Neur)) 
-
-#Conscientiousness
-with(personality.df_pcgm, hist(IPIP6_Cons,breaks = 10,
-                               xlab = "6FM Conscientiousness",
-                               main = "Conscientiousness Personality \n distribution"))
-skewness(personality.df_pcgm$IPIP6_Cons, na.rm = TRUE)
-shapiro.test(personality.df_pcgm$IPIP6_Cons)
-
-mean(personality.df_pcgm$IPIP6_Cons, na.rm = TRUE)
-sd(personality.df_pcgm$IPIP6_Cons, na.rm = TRUE)
-range(personality.df_pcgm$IPIP6_Cons, na.rm = TRUE)
-# of complete observations
-sum(!is.na(personality.df_pcgm$IPIP6_Cons)) 
-
-#Extra
-with(personality.df_pcgm, hist(IPIP6_Extra,breaks = 10,
-                               xlab = "6FM Exraversion",
-                               main = "Extraversion Personality \n distribution"))
-skewness(personality.df_pcgm$IPIP6_Extra, na.rm = TRUE)
-shapiro.test(personality.df_pcgm$IPIP6_Extra)
-
-mean(personality.df_pcgm$IPIP6_Extra, na.rm = TRUE)
-sd(personality.df_pcgm$IPIP6_Extra, na.rm = TRUE)
-range(personality.df_pcgm$IPIP6_Extra, na.rm = TRUE)
-# of complete observations
-sum(!is.na(personality.df_pcgm$IPIP6_Extra)) 
-
-#Agreeableness
-with(personality.df_pcgm, hist(IPIP6_Agree,breaks = 10,
-                               xlab = "6FM Agreeableness",
-                               main = "Agreeness Personality \n distribution"))
-skewness(personality.df_pcgm$IPIP6_Agree, na.rm = TRUE)
-shapiro.test(personality.df_pcgm$IPIP6_Agree)
-
-mean(personality.df_pcgm$IPIP6_Agree, na.rm = TRUE)
-sd(personality.df_pcgm$IPIP6_Agree, na.rm = TRUE)
-range(personality.df_pcgm$IPIP6_Agree, na.rm = TRUE)
-# of complete observations
-sum(!is.na(personality.df_pcgm$IPIP6_Agree)) 
-
-#Honesty-Humility
-with(personality.df_pcgm, hist(IPIP6_HonHum,breaks = 10,
-                               xlab = "6FM Honesty-Humility",
-                               main = "Honesty-Humility Personality \n distribution"))
-skewness(personality.df_pcgm$IPIP6_HonHum, na.rm = TRUE)
-shapiro.test(personality.df_pcgm$IPIP6_HonHum)
-
-mean(personality.df_pcgm$IPIP6_HonHum, na.rm = TRUE)
-sd(personality.df_pcgm$IPIP6_HonHum, na.rm = TRUE)
-range(personality.df_pcgm$IPIP6_HonHum, na.rm = TRUE)
-# of complete observations
-sum(!is.na(personality.df_pcgm$IPIP6_HonHum)) 
-
-```
-
-### Infant Age by Phase
-  
-```{r ORCA age all phases}
-#Phase 1
-mean(P1.data_pcgm$Age_p1, na.rm=TRUE)
-sd(P1.data_pcgm$Age_p1, na.rm=TRUE)
-range(P1.data_pcgm$Age_p1, na.rm=TRUE)
-
-#Phase 3
-mean(P1.data_pcgm$Age_p3, na.rm = TRUE)
-sd(P1.data_pcgm$Age_p3, na.rm = TRUE)
-range(P1.data_pcgm$Age_p3, na.rm = TRUE)
-
-#Phase 5
-mean(P1.eth$P5_Age, na.rm = TRUE)
-sd(P1.eth$P5_Age, na.rm = TRUE)
-range(P1.eth$P5_Age, na.rm = TRUE)
-#Phase 6
-mean(P1.eth$P6_Age, na.rm = TRUE)
-sd(P1.eth$P6_Age, na.rm = TRUE)
-range(P1.eth$P6_Age, na.rm = TRUE)
+#percent missing for entire dataset
+sum(is.na(df.c))/prod(dim(df.c))
 ```
   
-### Infant Gender (P1)
+Overall, the percent missing for the df isn't too bad ~ 25%. Most of the variables have an acceptable percent missing. However, given the majority of variables have > 5% missing (n = 21), there is a potential that excluding these participants will induce bias within the sample (see https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3701793/).
   
-```{r}
-table(P1.data_pcgm$Gender_Label)
+## Identify suitable variables as predictors for imputation 
+```{r missing data diagnostics flux plot, results = 'hide'}
+fluxplot(
+  df.c,
+  local = names(df.c),
+  plot = TRUE,
+  labels = TRUE,
+  xlim = c(0, 1),
+  ylim = c(0, 1),
+  las = 1,
+  xlab = "Influx",
+  ylab = "Outflux",
+  main = paste("Influx-outflux pattern for", deparse(substitute(df.c))),
+  eqscplot = TRUE,
+  pty = "s",
+  lwd = 1,
+  pch=19
+)
+
+
+
+flux(df.c)
 ```
   
-  
-### Infant Ethnicity
+Variables with an outflux < .5 have limitied predicive ability  
+Thus, *Avg_LAT2_FT_P3, IPIP6_Cons, IPIP6_Neur, IPIP6_Open, IPIP6_HonHum, IPIP6_Extra, IPIP6_Agree* should be excluded as predictors. This makes sense as well as these variables contain the highest percent missing.
 
-```{r infant ethnicity}
-#Ethnicity categories
-#NZE = 1
-#NZE/Maori =2
-#NZE/Asian = 3
-#NZE/Other = 4
-#Other = 5
-#NZE/Maori/Other = 6
+## Imputation of missing data  
+```{r mice for missing data, results = 'hide'}
+#training set
+init = mice(df.c, pred=quickpred(df.c, exclude = c("Gender", "Age_p3")), maxit=0) #Excludes constants and admin var
+meth = init$method
+predM = init$predictorMatrix
 
-P1.eth$Eth_Cat[P1.eth$NZEur_p1 == 1 & P1.eth$Maori_p1 == 0 
-               & P1.eth$Asian_p1 == 0 & P1.eth$Pacific_p1 == 0
-               & P1.eth$MidEastLatAmAfrican_p1 == 0 & P1.eth$OtherEur_p1 == 0 
-               & P1.eth$Other_p1 == 0] <- 1
+predM[, c("Avg_LAT2_FT_P3","Age_p3", "Gender",
+          "IPIP6_Cons", "IPIP6_Neur","IPIP6_Open",
+          "IPIP6_HonHum","IPIP6_Extra","IPIP6_Agree")]=0 #Variables with low outflux excluded as predic
 
-P1.eth$Eth_Cat[P1.eth$NZEur_p1 == 1 & P1.eth$Maori_p1 == 1 
-               & P1.eth$Asian_p1 == 0 & P1.eth$Pacific_p1 == 0
-               & P1.eth$MidEastLatAmAfrican_p1 == 0 & P1.eth$OtherEur_p1 == 0 
-               & P1.eth$Other_p1 == 0] <- 2
+meth[c("Age_p3", "Gender")]="" # excluded from predictions
 
-P1.eth$Eth_Cat[P1.eth$NZEur_p1 == 1 & P1.eth$Maori_p1 == 0 
-               & P1.eth$Asian_p1 == 1 & P1.eth$Pacific_p1 == 0
-               & P1.eth$MidEastLatAmAfrican_p1 == 0 & P1.eth$OtherEur_p1 == 0 
-               & P1.eth$Other_p1 == 0] <- 3
+set.seed(103) #for reproducability
+df.imp = mice(df.c, m=10, method = meth, predictorMatrix = predM, maxit = 10, print = FALSE)
 
-P1.eth$Eth_Cat[P1.eth$NZEur_p1 == 1 & P1.eth$Maori_p1 == 0 
-               & P1.eth$Asian_p1 == 0 & P1.eth$Pacific_p1 == 0
-               & P1.eth$MidEastLatAmAfrican_p1 == 0 & P1.eth$OtherEur_p1 == 0 
-               & P1.eth$Other_p1 == 1] <- 4
-
-P1.eth$Eth_Cat[P1.eth$NZEur_p1 == 1 & P1.eth$Maori_p1 == 1 
-               & P1.eth$Asian_p1 == 0 & P1.eth$Pacific_p1 == 0
-               & P1.eth$MidEastLatAmAfrican_p1 == 0 & P1.eth$OtherEur_p1 == 0 
-               & P1.eth$Other_p1 == 1] <- 6
-
-P1.eth$Eth_Cat[is.na(P1.eth$Eth_Cat)] <- 5
-
-P1.eth$Eth_CatLabel[P1.eth$Eth_Cat == 1] <- "NZE"
-P1.eth$Eth_CatLabel[P1.eth$Eth_Cat == 2] <- "NZE/Maori"
-P1.eth$Eth_CatLabel[P1.eth$Eth_Cat == 3] <- "NZE/Asian"
-P1.eth$Eth_CatLabel[P1.eth$Eth_Cat == 4] <- "NZE/Other"
-P1.eth$Eth_CatLabel[P1.eth$Eth_Cat == 5] <- "Other"
-P1.eth$Eth_CatLabel[P1.eth$Eth_Cat == 6] <- "NZE/Maori/Other"
-
-table(P1.eth$Eth_CatLabel)
+summary(df.imp)
+df.imp$predictorMatrix #check predictor matrix
 ```
 
+## Imputation dfs diagnostics 
+```{r model diagnostics}
+#This is to check that the distributions generally follow the same pattern
+stripplot(df.imp, pch = c(21, 20), cex = c(1, 1.5))
 
-### Infant Cooperative Understanding (Infant Anticipation P3)
+densityplot(df.imp, layout = c(3, 1))
 
-```{r infant CU}
-with(P1.data_pcgm, hist(Avg_Anti_P3,breaks = 10,
-                               xlab = "Avg anticipation score",
-                               main = "Infant CU score \n distribution"))
-skewness(P1.data_pcgm$Avg_Anti_P3, na.rm = TRUE)
-shapiro.test(P1.data_pcgm$Avg_Anti_P3)
-
-mean(P1.data_pcgm$Avg_Anti_P3, na.rm = TRUE)
-sd(P1.data_pcgm$Avg_Anti_P3, na.rm = TRUE)
-range(P1.data_pcgm$Avg_Anti_P3, na.rm = TRUE)
-# of complete observations
-sum(!is.na(P1.data_pcgm$Avg_Anti_P3)) 
+#Loooks solid!
 ```
 
+# SEM models
 
-### Infant Cooperative Ability - Parallel Roles Task
+## Notes regarding models
+* Run SEM with ML estimator
+* There are several potential issues with excluding missing data (see Helena et al. 2009). 
+* We should consider removing latency from analyses as high percent missing
 
-```{r CA PRT}
+## General Process for each of the 4 models
+* MI for complete data set to use for correlation tests. Participants are excluded if: < 70% English, born PT, did not complete Phase 3, did not complete at least 1 cooperative task (PRT or CRT) during their Phase 3 visit, or the mother did not complete the questionnaires at either P1, P5, or P6.
+  
+* Run hypothesized model - assess fit
+  
+* Run model of best fit based on correlation matrix
+  
+* Run saturated model from either above model
 
-#Parallel roles - Spatial Coordination
-with(PR_pcgm.data, hist(Avg_SC_PR_P3,breaks = 10,
-                               xlab = "Avg spatial coord score",
-                               main = "Infant spatial coordination \n distribution PRT"))
+* Test differences between 3 alternative models using ANOVA
 
-skewness(PR_pcgm.data$Avg_SC_PR_P3, na.rm = TRUE)
-shapiro.test(PR_pcgm.data$Avg_SC_PR_P3)
-mean(PR_pcgm.data$Avg_SC_PR_P3, na.rm = TRUE)
-sd(PR_pcgm.data$Avg_SC_PR_P3, na.rm = TRUE)
-sum(!is.na(PR_pcgm.data$Avg_SC_PR_P3))
+## Model statistics ML method
 
-#Parallel roles - Success
-with(PR_pcgm.data, hist(Avg_Succ_PR_P3,breaks = 10,
-                               xlab = "Avg success score",
-                               main = "Infant success score \n distribution PRT"))
+###Correlation matricies for all model dfs
+```{r correlation matrices}
+# correlation coefficients of ffm, cvs, prt variables
+pr.ffm.res <- miceadds::micombine.cor(mi.res=df.imp, variables=c(3:5,10:19))
 
-skewness(PR_pcgm.data$Avg_Succ_PR_P3, na.rm = TRUE)
-shapiro.test(PR_pcgm.data$Avg_Succ_PR_P3)
-mean(PR_pcgm.data$Avg_Succ_PR_P3, na.rm = TRUE)
-sd(PR_pcgm.data$Avg_Succ_PR_P3, na.rm = TRUE)
-sum(!is.na(PR_pcgm.data$Avg_Succ_PR_P3))
+# correlation coefficients of ffm, cvs, ft variables
+ft.ffm.res <- miceadds::micombine.cor(mi.res=df.imp, variables=c(6:19))
 
-#Parallel roles - Latency to success
+# correlation coefficients of sfm, cvs, prt variables
+pr.sfm.res <- miceadds::micombine.cor(mi.res=df.imp, variables=c(3:5,10,11,17:25))
 
-plot(PR_pcgm.data$Avg_Lat_PR_P3)
-mean(PR_pcgm.data$Avg_Lat_PR_P3, na.rm = TRUE)
-sd(PR_pcgm.data$Avg_Lat_PR_P3, na.rm = TRUE)
-sum(!is.na(PR_pcgm.data$Avg_Lat_PR_P3))
-
+# correlation coefficients of sfm, cvs, prt variables
+ft.sfm.res <- miceadds::micombine.cor(mi.res=df.imp, variables=c(6:11,17:25))
 ```
 
-### Infant Cooperative Ability - Complementary Roles Task
+# Study 1 PRT Model
 
-```{r CA CRT}
+## Hypothesized model  
+*The hypothesized model is a poor fit*
+```{r study 1 hypothesized model prt}
+#Hypothesized model
 
-#Complementary roles - Spatial Coordination
-with(FT_pcgm.data, hist(Avg_SC_FT_P3,breaks = 10,
-                               xlab = "Avg spatial coord score",
-                               main = "Infant spatial coordination \n distribution CRT"))
+h.s1_prt <- '
+Avg_SC_PR_P3 ~ a*Agree + b*response.diff + c*NEG + d*SUR + f*Pi_social_games_freq_p3_fixed 
+Avg_Succ_PR_P3 ~ g*Agree + h*response.diff + i*NEG + j*SUR + k*Pi_social_games_freq_p3_fixed  
+Avg_Lat_PR_P3 ~ l*Agree + m*response.diff + n*NEG + o*SUR + p*Pi_social_games_freq_p3_fixed 
 
-skewness(FT_pcgm.data$Avg_SC_FT_P3, na.rm = TRUE)
-shapiro.test(FT_pcgm.data$Avg_SC_FT_P3)
-mean(FT_pcgm.data$Avg_SC_FT_P3, na.rm = TRUE)
-sd(FT_pcgm.data$Avg_SC_FT_P3, na.rm = TRUE)
-sum(!is.na(FT_pcgm.data$Avg_SC_FT_P3))
+NEG ~ q*Agree
+REG ~ r*Agree
+Pi_social_games_freq_p3_fixed ~ s*Agree + t*response.diff
 
-#Complementary roles - Success
-with(FT_pcgm.data, hist(Avg_Succ_FT_P3,breaks = 10,
-                               xlab = "Avg success score",
-                               main = "Infant success score \n distribution CRT"))
 
-skewness(FT_pcgm.data$Avg_Succ_FT_P3, na.rm = TRUE)
-shapiro.test(FT_pcgm.data$Avg_Succ_FT_P3)
-mean(FT_pcgm.data$Avg_Succ_FT_P3, na.rm = TRUE)
-sd(FT_pcgm.data$Avg_Succ_FT_P3, na.rm = TRUE)
-sum(!is.na(FT_pcgm.data$Avg_Succ_FT_P3))
+indirect1 := q*a
+indirect2 := q*g
+indirect3 := q*l
 
-#Complementary roles - Latency to success action 1
+indirect3 := r*a
+indirect4 := r*g
+indirect5 := r*l
 
-plot(FT_pcgm.data$Avg_LAT1_FT_P3)
-mean(FT_pcgm.data$Avg_LAT1_FT_P3, na.rm = TRUE)
-sd(FT_pcgm.data$Avg_LAT1_FT_P3, na.rm = TRUE)
-sum(!is.na(FT_pcgm.data$Avg_LAT1_FT_P3))
+indirect6 := s*a
+indirect7 := s*g
+indirect8 := s*l
 
-#Complementary roles - Latency to success action 2
+indirect9 := t*b
+indirect10 := t*h
+indirect11 := t*m
+'
 
-plot(FT_pcgm.data$Avg_LAT2_FT_P3)
-mean(FT_pcgm.data$Avg_LAT2_FT_P3, na.rm = TRUE)
-sd(FT_pcgm.data$Avg_LAT2_FT_P3, na.rm = TRUE)
-sum(!is.na(FT_pcgm.data$Avg_LAT2_FT_P3))
-
+h.s1_prt.fit <- sem(h.s1_prt, data = df.c,  estimator="mlr", missing = "ML")
+summary(h.s1_prt.fit, fit.measures = TRUE)
 ```
 
-## Secondary and Control Analyses
+## Correlation based model
+```{r study 1 correlational model prt}
+#Unsaturated model based on p < .05 from corr matrix of imputed data for consistency across models
+us.s1_prt <- '
+Avg_SC_PR_P3 ~ e*Agree + f*Neur + a*NEG + b*REG
+Avg_Succ_PR_P3 ~ g*Neur 
+NEG ~ d*Neur + Cons
+REG ~ c*Neur + Cons
+indirect1 := d*f
+indirect2 := c*g
+total := e + (d * f) + (c * g)
+NEG ~~ REG
+Avg_SC_PR_P3 ~~ Avg_Succ_PR_P3
+'
 
-### Gender differences
-  
-#### Do parents of male and female infants have similar cooperative values?
-  
-```{r gender differences in CVS}
-with(P1.data_pcgm, boxplot(response.diff ~ Gender_Label))
-#As CVS is non-normally distributed nonparametric tests are utilized.
-wilcox.test(response.diff ~ Gender, data = P1.data_pcgm)
-```
-  
-#### Are there gender differences for infant anticipation scores?
-  
-```{r gender differences in CU}
-wilcox.test(Avg_Anti_P3 ~ Gender, data = P1.data_pcgm, paired=FALSE)
-```
-  
-#### Are there gender differences in infant cooperative ability in the parallel roles task?
-```{r gender differences in CA PRT}
-
-#test for gender differences in spatial coordination in the PRT
-wilcox.test(Avg_SC_PR_P3 ~ Gender, data = PR_pcgm.data, conf.int = T, conf.level = .95, paired=FALSE, exact = FALSE)
-Boys_PR<- PR_pcgm.data[which(PR_pcgm.data$Gender == 1),]
-Girls_PR<- PR_pcgm.data[which(PR_pcgm.data$Gender == 2),]
-median(Boys_PR$Avg_SC_PR_P3, na.rm = TRUE)
-median(Girls_PR$Avg_SC_PR_P3, na.rm = TRUE)
-
-#test for gender differences in success in the PRT
-wilcox.test(Avg_Succ_PR_P3 ~ Gender, data = PR_pcgm.data, paired=FALSE)
-
-#test for gender differences in latency to success in the PRT
-t.test(Avg_Lat_PR_P3 ~ Gender, data = PR_pcgm.data, paired=FALSE)
-```
-  
-#### Are there gender differences in infant cooperative ability in the complementary roles task?
-  
-```{r ender differences in CA CRT}
-
-#test for gender differences in spatial coordination in the CRT
-wilcox.test(Avg_SC_FT_P3 ~ Gender, data = FT_pcgm.data)
-
-#test for gender differences in success in the CRT
-wilcox.test(Avg_Succ_FT_P3 ~ Gender, data = FT_pcgm.data)
-
-#test for gender differences for latency action 1 in the CRT
-t.test(Avg_LAT1_FT_P3 ~ Gender, data = FT_pcgm.data)
-
-#test for gender differences for latency action 2 in the CRT
-t.test(Avg_LAT2_FT_P3 ~ Gender, data = FT_pcgm.data)
-
-```
-  
-  
-### Age differences
-  
-#### Is age correlated with cooperative understanding?
-  
-```{r age and cooperatve understanding}
-ag.cu.corr <- cor.test(x = PR_pcgm.data$Age_p3, y = PR_pcgm.data$Avg_Anti_P3, method = 'spearman')
-ag.cu.corr
+us.fit.s1_prt <- sem(us.s1_prt, df.c, estimator = "mlr", missing = "ML")
+summary(us.fit.s1_prt, fit.measures = TRUE)
+fitMeasures(us.fit.s1_prt)
+standardizedSolution(us.fit.s1_prt)
 ```
 
-#### Is age correlated with cooperative ability in the parallel roles task?
-  
-```{r age and CA PRT}
+## Alternative Model with direct effects only
 
-#is age related to spatial coordination in the PRT
-ag.sc.pr.corr <- cor.test(x = PR_pcgm.data$Age_p3, y = PR_pcgm.data$Avg_SC_PR_P3, method = 'spearman')
-ag.sc.pr.corr
-
-#is age related to success in the PRT
-ag.succ.pr.corr <- cor.test(x = PR_pcgm.data$Age_p3, y = PR_pcgm.data$Avg_Succ_PR_P3, method = 'spearman')
-ag.succ.pr.corr
-
-#is age related to latency in the PRT
-ag.lat.pr.corr <- cor.test(x = PR_pcgm.data$Age_p3, y = PR_pcgm.data$Avg_Lat_PR_P3, method = 'pearson')
-ag.lat.pr.corr
-
-```
-  
-#### Is age correlated with cooperative ability in the complementary roles task?
-  
-```{r age and CA CRT}
-
-#is age related to spatial coordination in the CRT
-ag.sc.ft.corr <- cor.test(x = FT_pcgm.data$Age_p3, y = FT_pcgm.data$Avg_SC_FT_P3, method = 'spearman')
-ag.sc.ft.corr
-
-#is age related to success in the CRT
-ag.succ.ft.corr <- cor.test(x = FT_pcgm.data$Age_p3, y = FT_pcgm.data$Avg_Succ_FT_P3, method = 'spearman')
-ag.succ.ft.corr
-
-#is age related to latency to success action 1 in the CRT
-ag.lat1.ft.corr <- cor.test(x = FT_pcgm.data$Age_p3, y = FT_pcgm.data$Avg_LAT1_FT_P3, method = 'pearson')
-ag.lat1.ft.corr
-
-#is age related to latency to success action 1 in the CRT
-ag.lat2.ft.corr <- cor.test(x = FT_pcgm.data$Age_p3, y = FT_pcgm.data$Avg_LAT2_FT_P3, method = 'pearson')
-ag.lat2.ft.corr
-
-```
-  
-#### Does at home experience shape infants cooperative competence?
-  
-```{r}
-### Cooperative Understanding ###
-#Check for relationship between at home experience and infant cooperative understanding
-sg.cu.corr <- cor.test(x = P1.data_pcgm$Pi_social_games_freq_p1_fixed, y = P1.data_pcgm$Avg_Anti_P3, method = 'spearman')
-sg.cu.corr
-
-#### Cooperative Ability ###
-
-#PR social games and spatial coordination 
-sg.sc.pr.corr <- cor.test(x = PR_pcgm.data$Pi_social_games_freq_p1_fixed, y = PR_pcgm.data$Avg_SC_PR_P3, method = 'spearman')
-sg.sc.pr.corr
-
-#PR social games and success
-sg.succ.pr.corr <- cor.test(x = PR_pcgm.data$Pi_social_games_freq_p1_fixed, y = PR_pcgm.data$Avg_Succ_PR_P3, method = 'spearman')
-sg.succ.pr.corr
-
-#PR social games and latency to success
-sg.lat.pr.corr <- cor.test(x = PR_pcgm.data$Pi_social_games_freq_p1_fixed, y = PR_pcgm.data$Avg_Lat_PR_P3, method = 'spearman')
-sg.lat.pr.corr
-
-#CR social games and spatial coordination 
-sg.sc.ft.corr <- cor.test(x = FT_pcgm.data$Pi_social_games_freq_p1_fixed, y = FT_pcgm.data$Avg_SC_FT_P3, method = 'spearman')
-sg.sc.ft.corr
-
-#CR social games and success
-sg.succ.ft.corr <- cor.test(x = FT_pcgm.data$Pi_social_games_freq_p1_fixed, y = FT_pcgm.data$Avg_Succ_FT_P3, method = 'spearman')
-sg.succ.ft.corr
-
-#CR social games and latency toy retrieval
-sg.lat1.ft.corr <- cor.test(x = FT_pcgm.data$Pi_social_games_freq_p1_fixed, y = FT_pcgm.data$Avg_LAT1_FT_P3, method = 'spearman')
-sg.lat1.ft.corr
-
-#CR social games and latency goal completion
-sg.lat2.ft.corr <- cor.test(x = FT_pcgm.data$Pi_social_games_freq_p1_fixed, y = FT_pcgm.data$Avg_LAT2_FT_P3, method = 'spearman')
-sg.lat2.ft.corr
+```{r study 1 direct effects model prt}
+#Temperament not a mediator so removed from model to saturate model
+s.s1_prt <- '
+Avg_SC_PR_P3 ~ e*Agree + f*Neur
+Avg_Succ_PR_P3 ~ g*Neur 
+Avg_SC_PR_P3 ~~ Avg_Succ_PR_P3
+'
+s.fit.s1_prt <- sem(s.s1_prt, df.c, estimator = "mlr", missing = "ML")
+summary(s.fit.s1_prt)
+lavaanPlot::lavaanPlot(name = "plot", s.fit.s1_prt, coefs = TRUE, stand = TRUE, sig = .05)
 ```
 
-## Focal Analyses
+## Model compare
 
-### Study 1
-
-#### Do parents who value cooperation for more altruistic reasons play more social games with their infant?
-```{r CVS and social games corr}
-resp_sg_pcgm.corr <- cor.test(x = P1.data_pcgm$Pi_social_games_freq_p1_fixed, y = P1.data_pcgm$response.diff, method = 'spearman')
-resp_sg_pcgm.corr
+```{r study 1 model compare prt}
+anova(us.fit.s1_prt, s.fit.s1_prt) 
+#No significant difference between models suggesting that the saturated model isn't explaining more of the endogeous variables and thus adding the connections in the unsaturated model doesn't change the interpretation and has theoretical value.
 ```
 
-#### Are there associations between parents’ personality (FFM) and cooperative values? 
-  
-```{r FFM corr CVS}
-#Agreeableness Personality and Cooperative Value Score (CVS) #.ns
-resp_agree.corr <- cor.test(x = personality.values.df_pcgm$response.diff, y = personality.values.df_pcgm$Agree, method = 'spearman')
-resp_agree.corr
+# Study 1 CRT Model
 
-#Openness Personality and Cooperative Value Score (CVS) #.ns
-resp_open.corr <- cor.test(x = personality.values.df_pcgm$response.diff, y = personality.values.df_pcgm$Open, method = 'spearman')
-resp_open.corr
+## Hypothesized model
+*The hypothesized model is a poor fit*
+```{r study 1 hypothesized model crt}
+#Hypothesized model
 
+h.s1_crt <- '
+Avg_SC_FT_P3 ~ a*Agree + b*response.diff + c*NEG + d*SUR + f*Pi_social_games_freq_p3_fixed 
+Avg_Succ_FT_P3 ~ g*Agree + h*response.diff + i*NEG + j*SUR + k*Pi_social_games_freq_p3_fixed  
+Avg_LAT1_FT_P3 ~ l*Agree + m*response.diff + n*NEG + o*SUR + p*Pi_social_games_freq_p3_fixed 
+Avg_LAT2_FT_P3 ~ u*Agree + v*response.diff + w*NEG + x*SUR + y*Pi_social_games_freq_p3_fixed 
 
-#Conscienciousness Personality and Cooperative Value Score (CVS) #.ns
-resp_cons.corr <- cor.test(x = personality.values.df_pcgm$response.diff, y = personality.values.df_pcgm$Cons, method = 'spearman')
-resp_cons.corr
-
-#Extraversion Personality and Cooperative Value Score (CVS) #.ns
-
-resp_extra.corr <- cor.test(x = personality.values.df_pcgm$response.diff, y = personality.values.df_pcgm$Extra, method = 'spearman')
-resp_extra.corr
-
-#Neuroticism Personality and Cooperative Value Score (CVS) #.ns
-resp_neur.corr <- cor.test(x = personality.values.df_pcgm$response.diff, y = personality.values.df_pcgm$Neur, method = 'spearman')
-resp_neur.corr
-```
-  
-#### Are there associations between parents’ personality (FFM) and cooperative experience provided to their infant?
-  
-```{r FFM personality and social games corr}
-#Agreeableness Personality and Social Games (SG) 
-sg.resp_agree.corr <- cor.test(x = personality.values.df_pcgm$Pi_social_games_freq_p1_fixed, y = personality.values.df_pcgm$Agree, method = 'pearson')
-sg.resp_agree.corr
-
-#Openness Personality and Social Games (SG) 
-sg.resp_open.corr <- cor.test(x = personality.values.df_pcgm$Pi_social_games_freq_p1_fixed, y = personality.values.df_pcgm$Open, method = 'pearson')
-sg.resp_open.corr
-
-#Conscienciousness Personality and Social Games (SG) 
-sg.resp_cons.corr <- cor.test(x = personality.values.df_pcgm$Pi_social_games_freq_p1_fixed, y = personality.values.df_pcgm$Cons, method = 'pearson')
-sg.resp_cons.corr
-
-#Extraversion Personality and Social Games (SG) 
-sg.resp_extra.corr <- cor.test(x = personality.values.df_pcgm$Pi_social_games_freq_p1_fixed, y = personality.values.df_pcgm$Extra, method = 'pearson')
-sg.resp_extra.corr
-
-#Neuroticism Personality and Social Games (SG) 
-sg.resp_neur.corr <- cor.test(x = personality.values.df_pcgm$Pi_social_games_freq_p1_fixed, y = personality.values.df_pcgm$Neur, method = 'pearson')
-sg.resp_neur.corr
-```
-  
-#### Are there associations between parent CVS and infant cooperative understanding?
-  
-```{r CVS and CU corr}
-cu_cvs.corr <- cor.test(x = P1.data_pcgm$response.diff, y = P1.data_pcgm$Avg_Anti_P3, method = 'spearman')
-cu_cvs.corr
-```
-  
-#### Are there associations between parent personality (FFM) and infant cooperative understanding? *YES*
-  
-```{r FFM and CU}
-CU_pp.model.pcgm <- lm(Avg_Anti_P3 ~ Agree + Open + Cons + Extra + Neur, data = personality.df_pcgm)
-CU_pp.model.pcgm
-summary(CU_pp.model.pcgm)
-```
-  
-#### Does parent CVS predict infant cooperative ability in the parallel roles task?
-
-```{r CVS PRT CA}
-#Parallel roles - Spatial Coordination - Ordinal regression
-
-PR_pcgm.data$Avg_SC_PR_P3_cat <- factor(PR_pcgm.data$Avg_SC_PR_P3, ordered = TRUE)
-PR_sc.cvs.OR_model <- polr(Avg_SC_PR_P3_cat ~ response.diff + Gender, data = PR_pcgm.data, Hess=TRUE)
-summary(PR_sc.cvs.OR_model)
-PR_SC.model.table <- coef(summary(PR_sc.cvs.OR_model))
-PR_SC.model.table
-#P values and other add to table
-p <- pnorm(abs(PR_SC.model.table[, "t value"]), lower.tail = FALSE) * 2
-PR_SC.model.table <- cbind(PR_SC.model.table, "p value" = p)
-PR_SC.model.table
-#confidence intervals
-ci <- confint(PR_sc.cvs.OR_model)
-ci
-exp(ci)
-#odds ratio
-exp(coef(PR_sc.cvs.OR_model))
+NEG ~ q*Agree
+REG ~ r*Agree
+Pi_social_games_freq_p3_fixed ~ s*Agree + t*response.diff
 
 
-#Parallel roles - Success - Ordinal Regression
+indirect1 := q*a
+indirect2 := q*g
+indirect3 := q*l
+indirect3a := q*u
 
-PR_pcgm.data$Avg_Succ_PR_P3_cat <- factor(PR_pcgm.data$Avg_Succ_PR_P3, ordered = TRUE)
+indirect3 := r*a
+indirect4 := r*g
+indirect5 := r*l
+indirect5a := r*u
 
-PR_succ.cvs.OR_model <- polr(Avg_Succ_PR_P3_cat ~ response.diff, data = PR_pcgm.data, Hess=TRUE)
-summary(PR_succ.cvs.OR_model)
-PR_Succ.model.table <- coef(summary(PR_succ.cvs.OR_model))
-PR_Succ.model.table
-#P values and other add to table
-p <- pnorm(abs(PR_Succ.model.table[, "t value"]), lower.tail = FALSE) * 2
-PR_Succ.model.table <- cbind(PR_Succ.model.table, "p value" = p)
-PR_Succ.model.table
-#confidence intervals
-ci <- confint(PR_succ.cvs.OR_model)
-exp(ci)
-#odds ratio
-exp(coef(PR_succ.cvs.OR_model))
+indirect6 := s*a
+indirect7 := s*g
+indirect8 := s*l
+indirect8a := s*u
 
-#Parallel roles - Latency to success - Linear regression
-PR_Lat.model_pcgm <- lm(Avg_Lat_PR_P3 ~ response.diff, data = PR_pcgm.data)
-PR_Lat.model_pcgm
-summary(PR_Lat.model_pcgm)
-```
-  
-#### Does parent CVS predict infant cooperative ability in the complementary roles task?
-  
-```{r CVS CRT CA}
-#Complementary Roles - Spatial Coordination -  Ordinal Regression
+indirect9 := t*b
+indirect10 := t*h
+indirect11 := t*m
+'
 
-FT_pcgm.data$Avg_SC_FT_P3_cat <- factor(FT_pcgm.data$Avg_SC_FT_P3, ordered = TRUE)
-FT_sc.cvs.OR_model <- polr(Avg_SC_FT_P3_cat ~ response.diff, data = FT_pcgm.data, Hess=TRUE)
-summary(FT_sc.cvs.OR_model)
-FT_SC.model.table <- coef(summary(FT_sc.cvs.OR_model))
-FT_SC.model.table
-#P values and other add to table
-p <- pnorm(abs(FT_SC.model.table[, "t value"]), lower.tail = FALSE) * 2
-FT_SC.model.table <- cbind(FT_SC.model.table, "p value" = p)
-FT_SC.model.table
-#confidence intervals
-ci <- confint(FT_sc.cvs.OR_model)
-exp(ci)
-#odds ratio
-exp(coef(FT_sc.cvs.OR_model))
-
-#Complementary Roles - Success Ordinal - Regression
-
-FT_pcgm.data$Avg_Succ_FT_P3_cat <- factor(FT_pcgm.data$Avg_Succ_FT_P3, ordered = TRUE)
-FT_succ.cvs.OR_model <- polr(Avg_Succ_FT_P3_cat ~ response.diff, data = FT_pcgm.data, Hess=TRUE)
-summary(FT_succ.cvs.OR_model)
-FT_Succ.model.table <- coef(summary(FT_succ.cvs.OR_model))
-FT_Succ.model.table
-#P values and other add to table
-p <- pnorm(abs(FT_Succ.model.table[, "t value"]), lower.tail = FALSE) * 2
-FT_Succ.model.table <- cbind(FT_Succ.model.table, "p value" = p)
-FT_Succ.model.table
-#confidence intervals
-ci <- confint(FT_succ.cvs.OR_model, level = 0.95)
-exp(ci)
-#odds ratio
-exp(coef(FT_succ.cvs.OR_model))
-
-#Complementary Roles - Latency Action 1 - Linear regression
-FT_Lat1.model_pcgm <- lm(Avg_LAT1_FT_P3 ~ response.diff, data = FT_pcgm.data)
-FT_Lat1.model_pcgm
-summary(FT_Lat1.model_pcgm)
-confint(FT_Lat1.model_pcgm, level = .95)
-
-#Complementary Roles - Latency Action 2 - Linear regression
-FT_Lat2.model_pcgm <- lm(Avg_LAT2_FT_P3 ~ response.diff + Age_p3, data = FT_pcgm.data)
-FT_Lat2.model_pcgm
-summary(FT_Lat2.model_pcgm)
-confint(FT_Lat2.model_pcgm, level = .95)
-```
-  
-#### Does parent personality (FFM) predict infant cooperative ability on the parallel roles task?
-  
-```{r FFM PRT CA}
-#Parallel roles task - Spatial coordination - Ordinal regression
-PR_pcgm.data.p3.p5$Avg_SC_PR_P3_cat <- factor(PR_pcgm.data.p3.p5$Avg_SC_PR_P3, ordered = TRUE)
-PR_sc.big5.OR_model <- polr(Avg_SC_PR_P3_cat ~ Agree + Open + Cons + Extra + Neur + Gender, data = PR_pcgm.data.p3.p5, Hess=TRUE)
-summary(PR_sc.big5.OR_model)
-PR_SC_5.model.table <- coef(summary(PR_sc.big5.OR_model))
-PR_SC_5.model.table
-#P values and other add to table
-p <- pnorm(abs(PR_SC_5.model.table[, "t value"]), lower.tail = FALSE) * 2
-PR_SC_5.model.table <- cbind(PR_SC_5.model.table, "p value" = p)
-PR_SC_5.model.table
-#confidence intervals
-ci <- confint(PR_sc.big5.OR_model)
-exp(ci)
-#odds ratio
-exp(coef(PR_sc.big5.OR_model))
-
-#Parallel roles task - Success - Ordinal regression
-PR_pcgm.data.p3.p5$Avg_Succ_PR_P3_cat <- factor(PR_pcgm.data.p3.p5$Avg_Succ_PR_P3, ordered = TRUE)
-PR_succ.big5.OR_model <- polr(Avg_Succ_PR_P3_cat ~ Agree + Open + Cons + Extra + Neur, data = PR_pcgm.data.p3.p5, Hess=TRUE)
-summary(PR_succ.big5.OR_model)
-PR_Succ_5.model.table <- coef(summary(PR_succ.big5.OR_model))
-PR_Succ_5.model.table
-#P values and other add to table
-p <- pnorm(abs(PR_Succ_5.model.table[, "t value"]), lower.tail = FALSE) * 2
-PR_Succ_5.model.table <- cbind(PR_Succ_5.model.table, "p value" = p)
-PR_Succ_5.model.table
-#confidence intervals
-ci <- confint(PR_succ.big5.OR_model)
-exp(ci)
-#odds ratio
-exp(coef(PR_succ.big5.OR_model))
-
-###Parallel roles -  Latency - Linear regression
-PR_Lat.ocean.model.pcgm <- lm(Avg_Lat_PR_P3 ~ Agree + Open + Cons + Extra + Neur, data = PR_pcgm.data.p3.p5)
-PR_Lat.ocean.model.pcgm
-confint(PR_Lat.ocean.model.pcgm, level = .95)
-summary(PR_Lat.ocean.model.pcgm)
-```
-  
-#### Does parent personality (FFM) predict infant cooperative ability on the complementary roles task?
-  
-```{r}
-#Complementary Roles - Spatial Coordination - Ordinal regression
-FT_pcgm.data.p3.p5$Avg_SC_FT_P3_cat <- factor(FT_pcgm.data.p3.p5$Avg_SC_FT_P3, ordered = TRUE)
-FT_sc.big5.OR_model <- polr(Avg_SC_FT_P3_cat ~ Agree + Open + Cons + Extra + Neur, data = FT_pcgm.data.p3.p5, Hess=TRUE)
-summary(FT_sc.big5.OR_model)
-FT_SC_5.model.table <- coef(summary(FT_sc.big5.OR_model))
-FT_SC_5.model.table
-#P values and other add to table
-p <- pnorm(abs(FT_SC_5.model.table[, "t value"]), lower.tail = FALSE) * 2
-FT_SC_5.model.table <- cbind(FT_SC_5.model.table, "p value" = p)
-FT_SC_5.model.table
-#confidence intervals
-ci <- confint(FT_sc.big5.OR_model)
-exp(ci)
-#odds ratio
-exp(coef(FT_sc.big5.OR_model))
-
-#Complementary Roles - Success - Ordinal regression
-FT_pcgm.data.p3.p5$Avg_Succ_FT_P3_cat <- factor(FT_pcgm.data.p3.p5$Avg_Succ_FT_P3, ordered = TRUE)
-FT_succ.big5.OR_model <- polr(Avg_Succ_FT_P3_cat ~ Agree + Open + Cons + Extra + Neur, data = FT_pcgm.data.p3.p5, Hess=TRUE)
-summary(FT_succ.big5.OR_model)
-FT_Succ_5.model.table <- coef(summary(FT_succ.big5.OR_model))
-FT_Succ_5.model.table
-#P values and other add to table
-p <- pnorm(abs(FT_Succ_5.model.table[, "t value"]), lower.tail = FALSE) * 2
-FT_Succ_5.model.table <- cbind(FT_Succ_5.model.table, "p value" = p)
-FT_Succ_5.model.table
-#confidence intervals
-ci <- confint(FT_succ.big5.OR_model)
-ci
-#odds ratio
-exp(coef(FT_succ.big5.OR_model))
-
-#Complementary Roles - Latency action 1 
-FT_LAT1.ocean.model.pcgm <- lm(Avg_LAT1_FT_P3 ~ Agree + Open + Cons + Extra + Neur, data = FT_pcgm.data.p3.p5)
-FT_LAT1.ocean.model.pcgm
-summary(FT_LAT1.ocean.model.pcgm)
-confint(FT_LAT1.ocean.model.pcgm, level = .95)
-
-#Complementary Roles - latency action 2 
-
-FT_LAT2.ocean.model.pcgm <- lm(Avg_LAT2_FT_P3 ~ Agree + Open + Cons + Extra + Neur + Age_p3, data = FT_pcgm.data.p3.p5)
-FT_LAT2.ocean.model.pcgm
-vif(FT_LAT2.ocean.model.pcgm)
-summary(FT_LAT2.ocean.model.pcgm)
-confint(FT_LAT2.ocean.model.pcgm, level = .95)
+h.s1_crt.fit <- sem(h.s1_crt, data = df.c,  estimator="mlr", missing = "ML")
+summary(h.s1_crt.fit, fit.measures = TRUE)
 ```
 
-### Study 2
+## Correlation based model
+```{r study 1 corr model crt}
+#Unsaturated model based on p < .05 from corr matrix
+us.s1_crt <- '
+Avg_Succ_FT_P3 ~ response.diff 
+Avg_SC_FT_P3 ~ response.diff 
+Avg_LAT1_FT_P3 ~ response.diff + Open 
 
-#### Are there associations between parents’ personality (HEXACO) and cooperative values? 
-  
-```{r HEXACO and CVS corr}
-#Agreeableness Personality and Cooperative Value Score (CVS) #.ns
-resp_hex.agree.corr <- cor.test(x = personality.values.df_pcgm$response.diff, y = personality.values.df_pcgm$IPIP6_Agree, method = 'spearman')
-resp_hex.agree.corr
+REG ~ Neur + Cons + Extra
+NEG ~ Cons 
+'
 
-#Honesty Humility Personality and Cooperative Value Score (CVS) #.ns
-resp_hex.hh.corr <- cor.test(x = personality.values.df_pcgm$response.diff, y = personality.values.df_pcgm$IPIP6_HonHum, method = 'spearman')
-resp_hex.hh.corr
-
-#Openness Personality and Cooperative Value Score (CVS) #.ns
-resp_hex.open.corr <- cor.test(x = personality.values.df_pcgm$response.diff, y = personality.values.df_pcgm$IPIP6_Open, method = 'spearman')
-resp_hex.open.corr
-
-
-#Conscienciousness Personality and Cooperative Value Score (CVS) #.ns
-resp_hex.cons.corr <- cor.test(x = personality.values.df_pcgm$response.diff, y = personality.values.df_pcgm$IPIP6_Cons, method = 'spearman')
-resp_hex.cons.corr
-
-#Extraversion Personality and Cooperative Value Score (CVS) #.ns
-
-resp_hex.extra.corr <- cor.test(x = personality.values.df_pcgm$response.diff, y = personality.values.df_pcgm$IPIP6_Extra, method = 'spearman')
-resp_hex.extra.corr
-
-#Neuroticism Personality and Cooperative Value Score (CVS) #.ns
-resp_hex.neur.corr <- cor.test(x = personality.values.df_pcgm$response.diff, y = personality.values.df_pcgm$IPIP6_Neur, method = 'spearman')
-resp_hex.neur.corr
-```
-  
-#### Are there associations between parents’ personality (HEXACO) and cooperative experience provided to their infant?
-  
-```{r HEXACO personality and social games corr}
-#Agreeableness Personality and Social Games (SG) 
-sg.resp.hex_agree.corr <- cor.test(x = personality.values.df_pcgm$Pi_social_games_freq_p1_fixed, y = personality.values.df_pcgm$IPIP6_Agree, method = 'pearson')
-sg.resp.hex_agree.corr
-
-#Honesty-Humility Personality and Social Games (SG) 
-sg.resp.hex_hh.corr <- cor.test(x = personality.values.df_pcgm$Pi_social_games_freq_p1_fixed, y = personality.values.df_pcgm$IPIP6_HonHum, method = 'pearson')
-sg.resp.hex_hh.corr
-
-
-#Openness Personality and Social Games (SG) 
-sg.resp.hex_open.corr <- cor.test(x = personality.values.df_pcgm$Pi_social_games_freq_p1_fixed, y = personality.values.df_pcgm$IPIP6_Open, method = 'pearson')
-sg.resp.hex_open.corr
-
-#Conscienciousness Personality and Social Games (SG) 
-sg.resp.hex_cons.corr <- cor.test(x = personality.values.df_pcgm$Pi_social_games_freq_p1_fixed, y = personality.values.df_pcgm$IPIP6_Cons, method = 'pearson')
-sg.resp.hex_cons.corr
-
-#Extraversion Personality and Social Games (SG) 
-sg.resp.hex_extra.corr <- cor.test(x = personality.values.df_pcgm$Pi_social_games_freq_p1_fixed, y = personality.values.df_pcgm$IPIP6_Extra, method = 'pearson')
-sg.resp.hex_extra.corr
-
-#Neuroticism Personality and Social Games (SG) 
-sg.resp.hex_neur.corr <- cor.test(x = personality.values.df_pcgm$Pi_social_games_freq_p1_fixed, y = personality.values.df_pcgm$IPIP6_Neur, method = 'pearson')
-sg.resp.hex_neur.corr
-```
-  
-#### Are there associations between parent personality (HEXACO) and infant cooperative understanding?
-  
-```{r HEXACO and CU}
-CU_hex.model.pcgm <- lm(Avg_Anti_P3 ~ IPIP6_Agree + IPIP6_HonHum + IPIP6_Open + IPIP6_Cons + IPIP6_Extra + IPIP6_Neur, data = personality.df_pcgm)
-CU_hex.model.pcgm
-summary(CU_hex.model.pcgm)
-```
-  
-#### Does parent personality (HEXACO) predict infant cooperative ability on the parallel roles task?
-  
-```{r HEXCO PRT CA}
-#Parallel roles task - Spatial coordination - Ordinal regression
-PR_pcgm.data.p3.p5$Avg_SC_PR_P3_cat <- factor(PR_pcgm.data.p3.p5$Avg_SC_PR_P3, ordered = TRUE)
-PR_sc.hex.OR_model <- polr(Avg_SC_PR_P3_cat ~ IPIP6_Agree + IPIP6_HonHum + IPIP6_Open + IPIP6_Cons + IPIP6_Extra + IPIP6_Neur + Gender, data = PR_pcgm.data.p3.p5, Hess=TRUE)
-summary(PR_sc.hex.OR_model)
-PR_SC_hex.model.table <- coef(summary(PR_sc.hex.OR_model))
-PR_SC_hex.model.table
-#P values and other add to table
-p <- pnorm(abs(PR_SC_hex.model.table[, "t value"]), lower.tail = FALSE) * 2
-PR_SC_hex.model.table <- cbind(PR_SC_hex.model.table, "p value" = p)
-PR_SC_hex.model.table
-#confidence intervals
-ci <- confint(PR_sc.hex.OR_model)
-exp(ci)
-#odds ratio
-exp(coef(PR_sc.hex.OR_model))
-
-#Parallel roles task - Success - Ordinal regression
-PR_pcgm.data.p3.p5$Avg_Succ_PR_P3_cat <- factor(PR_pcgm.data.p3.p5$Avg_Succ_PR_P3, ordered = TRUE)
-PR_succ.hex.OR_model <- polr(Avg_Succ_PR_P3_cat ~ IPIP6_Agree + IPIP6_HonHum + IPIP6_Open + IPIP6_Cons + IPIP6_Extra + IPIP6_Neur, data = PR_pcgm.data.p3.p5, Hess=TRUE)
-summary(PR_succ.hex.OR_model)
-PR_Succ_hex.model.table <- coef(summary(PR_succ.hex.OR_model))
-PR_Succ_hex.model.table
-#P values and other add to table
-p <- pnorm(abs(PR_Succ_hex.model.table[, "t value"]), lower.tail = FALSE) * 2
-PR_Succ_hex.model.table <- cbind(PR_Succ_hex.model.table, "p value" = p)
-PR_Succ_hex.model.table
-#confidence intervals
-ci <- confint(PR_succ.hex.OR_model)
-exp(ci)
-#odds ratio
-exp(coef(PR_succ.hex.OR_model))
-
-###Parallel roles -  Latency - Linear regression
-PR_Lat.hex.model.pcgm <- lm(Avg_Lat_PR_P3 ~ IPIP6_Agree + IPIP6_HonHum + IPIP6_Open + IPIP6_Cons + IPIP6_Extra + IPIP6_Neur, data = PR_pcgm.data.p3.p5)
-PR_Lat.hex.model.pcgm
-confint(PR_Lat.hex.model.pcgm, level = .95)
-summary(PR_Lat.hex.model.pcgm)
+us.fit.s1_crt <- sem(us.s1_crt, df.c, estimator = "mlr", missing = "ML")
+summary(us.fit.s1_crt, fit.measures = TRUE)
 ```
 
-#### Does parent personality (HEXACO) predict infant cooperative ability on the complementary roles task?
-  
-```{r}
-#Complementary Roles - Spatial Coordination - Ordinal regression
-FT_pcgm.data.p3.p5$Avg_SC_FT_P3_cat <- factor(FT_pcgm.data.p3.p5$Avg_SC_FT_P3, ordered = TRUE)
-FT_sc.hex.OR_model <- polr(Avg_SC_FT_P3_cat ~ IPIP6_Agree + IPIP6_HonHum + IPIP6_Open + IPIP6_Cons + IPIP6_Extra + IPIP6_Neur, data = FT_pcgm.data.p3.p5, Hess=TRUE)
-summary(FT_sc.hex.OR_model)
-FT_SC_hex.model.table <- coef(summary(FT_sc.hex.OR_model))
-FT_SC_hex.model.table
-#P values and other add to table
-p <- pnorm(abs(FT_SC_hex.model.table[, "t value"]), lower.tail = FALSE) * 2
-FT_SC_hex.model.table <- cbind(FT_SC_hex.model.table, "p value" = p)
-FT_SC_hex.model.table
-#confidence intervals
-ci <- confint(FT_sc.hex.OR_model)
-exp(ci)
-#odds ratio
-exp(coef(FT_sc.hex.OR_model))
+## Alternative Model with direct effects only
 
-#Complementary Roles - Success - Ordinal regression
-FT_pcgm.data.p3.p5$Avg_Succ_FT_P3_cat <- factor(FT_pcgm.data.p3.p5$Avg_Succ_FT_P3, ordered = TRUE)
-FT_succ.hex.OR_model <- polr(Avg_Succ_FT_P3_cat ~ IPIP6_Agree + IPIP6_HonHum + IPIP6_Open + IPIP6_Cons + IPIP6_Extra + IPIP6_Neur, data = FT_pcgm.data.p3.p5, Hess=TRUE)
-summary(FT_succ.hex.OR_model)
-FT_Succ_hex.model.table <- coef(summary(FT_succ.hex.OR_model))
-FT_Succ_hex.model.table
-#P values and other add to table
-p <- pnorm(abs(FT_Succ_hex.model.table[, "t value"]), lower.tail = FALSE) * 2
-FT_Succ_hex.model.table <- cbind(FT_Succ_hex.model.table, "p value" = p)
-FT_Succ_hex.model.table
-#confidence intervals
-ci <- confint(FT_succ.hex.OR_model)
-ci
-#odds ratio
-exp(coef(FT_succ.hex.OR_model))
-
-#Complementary Roles - Latency action 1 
-FT_LAT1.hex.model.pcgm <- lm(Avg_LAT1_FT_P3 ~ IPIP6_Agree + IPIP6_HonHum + IPIP6_Open + IPIP6_Cons + IPIP6_Extra + IPIP6_Neur, data = FT_pcgm.data.p3.p5)
-FT_LAT1.hex.model.pcgm
-summary(FT_LAT1.hex.model.pcgm)
-confint(FT_LAT1.hex.model.pcgm, level = .95)
-
-#Complementary Roles - latency action 2 
-
-FT_LAT2.hex.model.pcgm <- lm(Avg_LAT2_FT_P3 ~ IPIP6_Agree + IPIP6_HonHum + IPIP6_Open + IPIP6_Cons + IPIP6_Extra + IPIP6_Neur + Age_p3, data = FT_pcgm.data.p3.p5)
-FT_LAT2.hex.model.pcgm
-vif(FT_LAT2.hex.model.pcgm)
-summary(FT_LAT2.hex.model.pcgm)
-confint(FT_LAT2.hex.model.pcgm, level = .95)
+```{r study 1 saturdated model crt}
+s.s1_crt <- '
+Avg_Succ_FT_P3 ~ response.diff
+Avg_SC_FT_P3 ~ response.diff
+Avg_LAT1_FT_P3 ~ response.diff + Open 
+'
+s.fit.s1_crt <- sem(s.s1_crt, df.c, estimator = "mlr", missing = "ML")
+summary(s.fit.s1_crt, fit.measures = TRUE)
 ```
+
+## Model compare
+
+```{r study 1 model compare crt}
+anova(us.fit.s1_crt, s.fit.s1_crt) 
+#No significant difference between models suggesting that the saturated model isn't explaining more of the endogeous variables and thus adding the connections in the unsaturated model doesn't change the interpretation and has theoretical value.
+```
+
+# Study 2 PRT Model
+
+## Hypothesized model
+*The hypothesized model is a poor fit*
+```{r study 2 hypothesized model prt}
+#Hypothesized model
+
+h.s2_prt <- '
+Avg_SC_PR_P3 ~ a*IPIP6_HonHum + b*response.diff + c*NEG + d*SUR + f*Pi_social_games_freq_p3_fixed 
+Avg_Succ_PR_P3 ~ g*IPIP6_HonHum + h*response.diff + i*NEG + j*SUR + k*Pi_social_games_freq_p3_fixed  
+Avg_Lat_PR_P3 ~ l*IPIP6_HonHum + m*response.diff + n*NEG + o*SUR + p*Pi_social_games_freq_p3_fixed 
+
+NEG ~ q*IPIP6_HonHum
+REG ~ r*IPIP6_HonHum
+Pi_social_games_freq_p3_fixed ~ s*IPIP6_HonHum + t*response.diff
+
+
+indirect1 := q*a
+indirect2 := q*g
+indirect3 := q*l
+
+indirect3 := r*a
+indirect4 := r*g
+indirect5 := r*l
+
+indirect6 := s*a
+indirect7 := s*g
+indirect8 := s*l
+
+indirect9 := t*b
+indirect10 := t*h
+indirect11 := t*m
+'
+
+h.s2_prt.fit <- sem(h.s2_prt, data = df.c,  estimator="mlr", missing = "ML")
+summary(h.s2_prt.fit, fit.measures = TRUE)
+```
+
+## Correlation based model
+
+```{r study 2 corr model prt}
+
+#Unsaturated model based on p < .05 from corr matrix
+us.s2_prt <- '
+Avg_SC_PR_P3 ~ IPIP6_HonHum 
+Avg_Succ_PR_P3 ~ IPIP6_HonHum
+Pi_social_games_freq_p3_fixed ~	IPIP6_Open + IPIP6_Extra
+SUR ~ IPIP6_HonHum
+
+'
+us.fit.s2_prt <- sem(us.s2_prt, df.c, estimator = "mlr", missing = "ML")
+summary(us.fit.s2_prt, fit.measures = TRUE)
+```
+
+## Alternative Model with direct effects only
+
+```{r study 2 sat model prt}
+
+#saturated model based on p < .05 from corr matrix
+s.s2_prt <- '
+Avg_SC_PR_P3 ~ IPIP6_HonHum 
+Avg_Succ_PR_P3 ~ IPIP6_HonHum
+
+Avg_SC_PR_P3 ~~ Avg_Succ_PR_P3
+'
+s.fit.s2_prt <- sem(s.s2_prt, df.c, estimator = "mlr", missing = "ML")
+summary(s.fit.s2_prt, fit.measures = TRUE)
+```
+
+## Model compare
+
+```{r study 2 model compare prt}
+anova(s.fit.s2_prt, us.fit.s2_prt) 
+#No significant difference between models suggesting that the saturated model isn't explaining more of the endogeous variables and thus adding the connections in the unsaturated model doesn't change the interpretation and has theoretical value.
+```
+
+# Study 2 CRT Model
+
+## Hypothesized model
+*The hypothesized model is a poor fit*
+```{r study 2 hypothesized model crt}
+#Hypothesized model
+
+h.s2_crt <- '
+Avg_SC_FT_P3 ~ a*IPIP6_HonHum + c*NEG + d*SUR + f*Pi_social_games_freq_p3_fixed 
+Avg_Succ_FT_P3 ~ g*IPIP6_HonHum + i*NEG + j*SUR + k*Pi_social_games_freq_p3_fixed  
+Avg_LAT1_FT_P3 ~ l*IPIP6_HonHum + n*NEG + o*SUR + p*Pi_social_games_freq_p3_fixed 
+Avg_LAT2_FT_P3 ~ u*IPIP6_HonHum + w*NEG + x*SUR + y*Pi_social_games_freq_p3_fixed 
+
+NEG ~ q*IPIP6_HonHum
+REG ~ r*IPIP6_HonHum
+Pi_social_games_freq_p3_fixed ~ s*IPIP6_HonHum 
+
+
+indirect1 := q*a
+indirect2 := q*g
+indirect3 := q*l
+indirect3a := q*u
+
+indirect3 := r*a
+indirect4 := r*g
+indirect5 := r*l
+indirect5a := r*u
+
+indirect6 := s*a
+indirect7 := s*g
+indirect8 := s*l
+indirect8a := s*u
+'
+
+h.s2_crt.fit <- sem(h.s2_crt, data = df.c,  estimator="mlr", missing = "ML")
+summary(h.s2_crt.fit, fit.measures = TRUE)
+```
+
+## Correlation based model
+**The correlation matrix suggests that IPIP6 personality variables are not related to any endogenous variables and thus a follow up model test is not necessary**
+
