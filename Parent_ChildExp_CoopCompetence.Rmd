@@ -11,6 +11,7 @@ options(width = 60)
 library(knitr)
 opts_chunk$set(tidy.opts=list(width.cutoff=60),tidy=TRUE)
 df <- read.csv("ParentChild_Coop_ReducedData.csv", stringsAsFactors = FALSE)
+eth <- read.csv("Demographics_SES_Ethnicity.csv", stringsAsFactors = FALSE)
 ```
 
 
@@ -28,15 +29,18 @@ library(tidyverse)
 library(lavaan)
 library(semTools)
 library(lavaanPlot)
+library(DescTools)
+library(sem)
+library(corrplot)
+library(Hmisc)
+library(apaTables)
+library(dplyr)
 ```
 
 ```{r cleaned data file set up,eval = FALSE, include = FALSE}
 
 #Dataset with cooperative competence measures and parent variables (CVS and Big 5)
 all.data = read.csv("P1_PPI_Ability_Anticipation_Workingset.csv", stringsAsFactors = FALSE)
-#Dataset with SES (parent education), Infant Ethnicity, P5 and P6 Age
-eth.data = read.csv("Demographics_SES_Ethnicity.csv", stringsAsFactors = FALSE)
-eth.data[eth.data == 999] <- NA
 all.data[all.data == 999] <- NA
 all.data[all.data == 777] <- NA
 options(scipen = 999) #turns off scientific notation
@@ -148,11 +152,11 @@ df <- subset(all.data, select = c("ID_num", "Study_inout","Parent_Type_p1","PCG_
                                   "PCG_p5","Gender", "Age_p1", "Age_p3",
                                   "Avg_SC_PR_P3", "Avg_Succ_PR_P3", "Avg_Lat_PR_P3",
                                   "Avg_SC_FT_P3", "Avg_Succ_FT_P3","Avg_LAT1_FT_P3",
-                                  "Avg_LAT2_FT_P3", "Pi_social_games_freq_p3_fixed",
+                                  "Avg_LAT2_FT_P3", "Pi_social_games_freq_p1_fixed",
                                   "Gender_Label", "response.diff", "Neur" ,"Agree",
                                   "Cons","Extra","Open","Parent_Type_p6","PCG_p6", 
                                   "IPIP6_Cons","IPIP6_Neur","IPIP6_Open","IPIP6_HonHum",
-                                  "IPIP6_Extra", "IPIP6_Agree"))
+                                  "IPIP6_Extra", "IPIP6_Agree", "no_of_op_p1"))
 
 ibq.df <- read.csv("IBQ_P1_Masterfile.csv", stringsAsFactors = FALSE)
 ibq.df <- subset(ibq.df, select = c("ID_num", "act","dist","fear","dura","smil","hip",
@@ -203,21 +207,109 @@ df.m <- subset(df.m, select = c("ID_num","Study_inout",
                                          "Gender_Label","Age_p1","Age_p3","Avg_SC_PR_P3",
                                          "Avg_Succ_PR_P3", "Avg_Lat_PR_P3","Avg_SC_FT_P3",
                                          "Avg_Succ_FT_P3","Avg_LAT1_FT_P3","Avg_LAT2_FT_P3",
-                                         "Pi_social_games_freq_p3_fixed","response.diff" ,
+                                         "Pi_social_games_freq_p1_fixed","response.diff" ,
                                          "Neur","Agree" ,"Cons" ,"Extra"  ,"Open" ,
                                          "IPIP6_Cons",
                                          "IPIP6_Neur","IPIP6_Open",
                                          "IPIP6_HonHum","IPIP6_Extra",
-                                         "IPIP6_Agree","SUR","NEG","REG"))
+                                         "IPIP6_Agree","SUR","NEG","REG", "no_of_op_p1"))
 
 #cleaned subset for imputations with extra variables removed as to not throw off predictor matrix
 df.c <- subset(df.m, select = c("Gender", "Age_p3", "Avg_SC_PR_P3",
                                 "Avg_Succ_PR_P3", "Avg_Lat_PR_P3","Avg_SC_FT_P3",
                                 "Avg_Succ_FT_P3","Avg_LAT1_FT_P3","Avg_LAT2_FT_P3",
-                                "Pi_social_games_freq_p3_fixed","response.diff" ,
+                                "Pi_social_games_freq_p1_fixed","response.diff" ,
                                 "Neur","Agree" ,"Cons" ,"Extra"  ,"Open","SUR","NEG","REG",
                                 "IPIP6_Cons", "IPIP6_Neur","IPIP6_Open", "IPIP6_HonHum",
                                 "IPIP6_Extra", "IPIP6_Agree"))
+df.c$Gender.bi[df.c$Gender == 1] <- 0 #Male
+df.c$Gender.bi[df.c$Gender == 2] <- 1 #Female
+
+
+#data subset with outliers windsorized
+
+df.w <- subset(df.c, select = c("Gender", "Age_p3", "Avg_SC_PR_P3",
+                                "Avg_Succ_PR_P3", "Avg_Lat_PR_P3","Avg_SC_FT_P3",
+                                "Avg_Succ_FT_P3","Avg_LAT1_FT_P3","Avg_LAT2_FT_P3",
+                                "Pi_social_games_freq_p1_fixed","response.diff" ,
+                                "Neur","Agree" ,"Cons" ,"Extra"  ,"Open","SUR","NEG","REG",
+                                "IPIP6_Cons", "IPIP6_Neur","IPIP6_Open", "IPIP6_HonHum",
+                                "IPIP6_Extra", "IPIP6_Agree", "Gender.bi"))
+
+df.w$Avg_Succ_PR_P3 <- Winsorize(df.w$Avg_Succ_PR_P3, 
+                                 probs = c(0.05, 0.95),
+                                 na.rm = TRUE, type = 7)
+df.w$Avg_SC_PR_P3 <- Winsorize(df.w$Avg_SC_PR_P3, 
+                                 probs = c(0.05, 0.95),
+                                 na.rm = TRUE, type = 7)
+df.w$Avg_Lat_PR_P3 <- Winsorize(df.w$Avg_Lat_PR_P3, 
+                                 probs = c(0.05, 0.95),
+                                 na.rm = TRUE, type = 7)
+df.w$Avg_Succ_FT_P3 <- Winsorize(df.w$Avg_Succ_FT_P3, 
+                                 probs = c(0.05, 0.95),
+                                 na.rm = TRUE, type = 7)
+df.w$Avg_SC_FT_P3 <- Winsorize(df.w$Avg_SC_FT_P3, 
+                                 probs = c(0.05, 0.95),
+                                 na.rm = TRUE, type = 7)
+df.w$Avg_LAT1_FT_P3 <- Winsorize(df.w$Avg_LAT1_FT_P3, 
+                                 probs = c(0.05, 0.95),
+                                 na.rm = TRUE, type = 7)
+df.w$Avg_LAT2_FT_P3 <- Winsorize(df.w$Avg_LAT2_FT_P3, 
+                                 probs = c(0.05, 0.95),
+                                 na.rm = TRUE, type = 7)
+df.w$Pi_social_games_freq_p1_fixed <- Winsorize(df.w$Pi_social_games_freq_p1_fixed, 
+                                 probs = c(0.05, 0.95),
+                                 na.rm = TRUE, type = 7)
+df.w$response.diff <- Winsorize(df.w$response.diff, 
+                                 probs = c(0.05, 0.95),
+                                 na.rm = TRUE, type = 7)
+df.w$Neur <- Winsorize(df.w$Neur, 
+                                 probs = c(0.05, 0.95),
+                                 na.rm = TRUE, type = 7)
+df.w$Agree <- Winsorize(df.w$Agree, 
+                                 probs = c(0.05, 0.95),
+                                 na.rm = TRUE, type = 7)
+df.w$Cons <- Winsorize(df.w$Cons, 
+                                 probs = c(0.05, 0.95),
+                                 na.rm = TRUE, type = 7)
+df.w$Exta <- Winsorize(df.w$Extra, 
+                                 probs = c(0.05, 0.95),
+                                 na.rm = TRUE, type = 7)
+df.w$Open <- Winsorize(df.w$Open, 
+                                 probs = c(0.05, 0.95),
+                                 na.rm = TRUE, type = 7)
+df.w$SUR <- Winsorize(df.w$SUR, 
+                                 probs = c(0.05, 0.95),
+                                 na.rm = TRUE, type = 7)
+df.w$NEG <- Winsorize(df.w$NEG, 
+                                 probs = c(0.05, 0.95),
+                                 na.rm = TRUE, type = 7)
+df.w$REG <- Winsorize(df.w$REG, 
+                                 probs = c(0.05, 0.95),
+                                 na.rm = TRUE, type = 7)
+df.w$IPIP6_Neur <- Winsorize(df.w$IPIP6_Neur, 
+                                 probs = c(0.05, 0.95),
+                                 na.rm = TRUE, type = 7)
+df.w$IPIP6_Agree <- Winsorize(df.w$IPIP6_Agree, 
+                                 probs = c(0.05, 0.95),
+                                 na.rm = TRUE, type = 7)
+df.w$IPIP6_Cons <- Winsorize(df.w$IPIP6_Cons, 
+                                 probs = c(0.05, 0.95),
+                                 na.rm = TRUE, type = 7)
+df.w$IPIP6_Exta <- Winsorize(df.w$IPIP6_Extra, 
+                                 probs = c(0.05, 0.95),
+                                 na.rm = TRUE, type = 7)
+df.w$IPIP6_Open <- Winsorize(df.w$IPIP6_Open, 
+                                 probs = c(0.05, 0.95),
+                                 na.rm = TRUE, type = 7)
+df.w$IPIP6_HonHum <- Winsorize(df.w$IPIP6_HonHum, 
+                                 probs = c(0.05, 0.95),
+                                 na.rm = TRUE, type = 7)
+
+#Create df for ethnicity data
+
+df.eth <- subset(df.m, select = c("ID_num"))
+Study1.eth <- merge(x = df.eth, y = eth, by = "ID_num", all = FALSE)
 ```
 
 # Dealing with missing data
@@ -273,7 +365,8 @@ predM[, c("Avg_LAT2_FT_P3","Age_p3", "Gender",
 
 meth[c("Age_p3", "Gender")]="" # excluded from predictions
 
-set.seed(103) #for reproducability
+
+set.seed(100) #for rep
 df.imp = mice(df.c, m=10, method = meth, predictorMatrix = predM, maxit = 10, print = FALSE)
 
 summary(df.imp)
@@ -310,10 +403,10 @@ densityplot(df.imp, layout = c(3, 1))
 
 ## Model statistics ML method
 
-###Correlation matricies for all model dfs
+### Correlation matricies for all model dfs
 ```{r correlation matrices}
 # correlation coefficients of ffm, cvs, prt variables
-pr.ffm.res <- miceadds::micombine.cor(mi.res=df.imp, variables=c(3:5,10:19))
+ft.ffm.res <- miceadds::micombine.cor(mi.res=df.imp, variables=c(3:5, 10:19))
 
 # correlation coefficients of ffm, cvs, ft variables
 ft.ffm.res <- miceadds::micombine.cor(mi.res=df.imp, variables=c(6:19))
@@ -323,7 +416,54 @@ pr.sfm.res <- miceadds::micombine.cor(mi.res=df.imp, variables=c(3:5,10,11,17:25
 
 # correlation coefficients of sfm, cvs, prt variables
 ft.sfm.res <- miceadds::micombine.cor(mi.res=df.imp, variables=c(6:11,17:25))
+
+#correlation matrix for og df - study 1 only
+res.s1 <- miceadds::micombine.cor(mi.res=df.c, variables=c(3:19))
+#remove duplicate rows
+res.s1 <- distinct(res.s1, t, .keep_all = TRUE)
+#create adjusted multiple comp p values
+p <- res.s1$p
+p.adj <- p.adjust(p, method = "fdr", n = length(p))
+res.s1$p.adj <- p.adj
+
+
+#correlation matirix for og df - study 2 only
+
+df.cor2 <- subset(df.c, select = c("response.diff",  "Pi_social_games_freq_p1_fixed", 
+                                  "IPIP6_Open", "IPIP6_Cons", "IPIP6_Extra", 
+                                  "IPIP6_Agree","IPIP6_Neur","IPIP6_HonHum",
+                                  "SUR","NEG","REG","Avg_SC_PR_P3", "Avg_SC_FT_P3",
+                                "Avg_Succ_PR_P3",  "Avg_Succ_FT_P3","Avg_Lat_PR_P3",
+                               "Avg_LAT1_FT_P3","Avg_LAT2_FT_P3"))
+res.s2 <- miceadds::micombine.cor(mi.res=df.cor2, method="pearson")
+res.s2 <- dplyr::distinct(res.s2, t, .keep_all = TRUE)
+#create adjusted multiple comp p values
+p <- res.s2$p
+p.adj <- p.adjust(p, method = "fdr", n = length(p))
+res.s2$p.adj <- p.adj
+
 ```
+
+
+```{r Correlation matricies for manuscript, eval=FALSE, include=FALSE}
+#Study 1
+df.cor <- subset(df.c, select = c("response.diff",  "Pi_social_games_freq_p1_fixed",
+                                  "Open", "Cons" , "Extra" , "Agree" , "Neur",
+                                  "SUR","NEG","REG","Avg_SC_PR_P3", "Avg_SC_FT_P3",
+                                "Avg_Succ_PR_P3",  "Avg_Succ_FT_P3","Avg_Lat_PR_P3",
+                               "Avg_LAT1_FT_P3","Avg_LAT2_FT_P3"))
+apa.cor.table(df.cor, filename="Corr_APA.doc", table.number=1)
+
+#Study 2
+df.cor2 <- subset(df.c, select = c("response.diff",  "Pi_social_games_freq_p1_fixed", 
+                                  "IPIP6_Open", "IPIP6_Cons", "IPIP6_Extra", 
+                                  "IPIP6_Agree","IPIP6_Neur","IPIP6_HonHum",
+                                  "SUR","NEG","REG","Avg_SC_PR_P3", "Avg_SC_FT_P3",
+                                "Avg_Succ_PR_P3",  "Avg_Succ_FT_P3","Avg_Lat_PR_P3",
+                               "Avg_LAT1_FT_P3","Avg_LAT2_FT_P3"))
+apa.cor.table(df.cor2, filename="Corr2_APA.doc", table.number=2)
+```
+
 
 # Study 1 PRT Model
 
@@ -333,13 +473,13 @@ ft.sfm.res <- miceadds::micombine.cor(mi.res=df.imp, variables=c(6:11,17:25))
 #Hypothesized model
 
 h.s1_prt <- '
-Avg_SC_PR_P3 ~ a*Agree + b*response.diff + c*NEG + d*SUR + f*Pi_social_games_freq_p3_fixed 
-Avg_Succ_PR_P3 ~ g*Agree + h*response.diff + i*NEG + j*SUR + k*Pi_social_games_freq_p3_fixed  
-Avg_Lat_PR_P3 ~ l*Agree + m*response.diff + n*NEG + o*SUR + p*Pi_social_games_freq_p3_fixed 
+Avg_SC_PR_P3 ~ a*Agree + b*response.diff + c*NEG + d*SUR + f*Pi_social_games_freq_p1_fixed + Gender.bi
+Avg_Succ_PR_P3 ~ g*Agree + h*response.diff + i*NEG + j*SUR + k*Pi_social_games_freq_p1_fixed  
+Avg_Lat_PR_P3 ~ l*Agree + m*response.diff + n*NEG + o*SUR + p*Pi_social_games_freq_p1_fixed 
 
 NEG ~ q*Agree
-REG ~ r*Agree
-Pi_social_games_freq_p3_fixed ~ s*Agree + t*response.diff
+SUR ~ r*Agree
+Pi_social_games_freq_p1_fixed ~ s*Agree + t*response.diff
 
 
 indirect1 := q*a
@@ -359,42 +499,42 @@ indirect10 := t*h
 indirect11 := t*m
 '
 
-h.s1_prt.fit <- sem(h.s1_prt, data = df.c,  estimator="mlr", missing = "ML")
-summary(h.s1_prt.fit, fit.measures = TRUE)
+h.s1_prt.fit <- lavaan::sem(h.s1_prt, data = df.c,  estimator="mlr", missing = "ml.x", fixed.x = FALSE)
+summary(h.s1_prt.fit, fit.measures = TRUE, standardized = TRUE)
+standardizedSolution(h.s1_prt.fit)
+lavaanPlot::lavaanPlot(h.s1_prt.fit, name = "plot", coef=TRUE)
 ```
 
 ## Correlation based model
 ```{r study 1 correlational model prt}
 #Unsaturated model based on p < .05 from corr matrix of imputed data for consistency across models
 us.s1_prt <- '
-Avg_SC_PR_P3 ~ e*Agree + f*Neur + a*NEG + b*REG
-Avg_Succ_PR_P3 ~ g*Neur 
-NEG ~ d*Neur + Cons
-REG ~ c*Neur + Cons
-indirect1 := d*f
+Avg_SC_PR_P3 ~ e*Agree + f*Neur + Gender.bi + REG
+Avg_Succ_PR_P3 ~ g*Neur + Agree + REG
+Avg_Lat_PR_P3 ~ g*Neur + Agree + REG
+REG ~ c*Neur
+indirect1 := c*f
 indirect2 := c*g
-total := e + (d * f) + (c * g)
-NEG ~~ REG
 Avg_SC_PR_P3 ~~ Avg_Succ_PR_P3
 '
 
-us.fit.s1_prt <- sem(us.s1_prt, df.c, estimator = "mlr", missing = "ML")
+us.fit.s1_prt <- lavaan::sem(us.s1_prt, df.c, estimator = "mlr", missing = "ml.x", fixed.x = FALSE)
 summary(us.fit.s1_prt, fit.measures = TRUE)
-fitMeasures(us.fit.s1_prt)
-standardizedSolution(us.fit.s1_prt)
+lavaanPlot::lavaanPlot(name = "plot", us.fit.s1_prt, coefs = TRUE, stand = FALSE, sig = .05)
+lavaan::standardizedSolution(us.fit.s1_prt)
 ```
 
 ## Alternative Model with direct effects only
 
+
 ```{r study 1 direct effects model prt}
 #Temperament not a mediator so removed from model to saturate model
 s.s1_prt <- '
-Avg_SC_PR_P3 ~ e*Agree + f*Neur
+Avg_SC_PR_P3 ~ e*Agree + f*Neur + Gender.bi
 Avg_Succ_PR_P3 ~ g*Neur 
-Avg_SC_PR_P3 ~~ Avg_Succ_PR_P3
 '
-s.fit.s1_prt <- sem(s.s1_prt, df.c, estimator = "mlr", missing = "ML")
-summary(s.fit.s1_prt)
+s.fit.s1_prt <- lavaan::sem(s.s1_prt, df.c, estimator = "mlr", missing = "ml.x", fixed.x = FALSE)
+summary(s.fit.s1_prt, fit.measures = TRUE)
 lavaanPlot::lavaanPlot(name = "plot", s.fit.s1_prt, coefs = TRUE, stand = TRUE, sig = .05)
 ```
 
@@ -402,6 +542,13 @@ lavaanPlot::lavaanPlot(name = "plot", s.fit.s1_prt, coefs = TRUE, stand = TRUE, 
 
 ```{r study 1 model compare prt}
 anova(us.fit.s1_prt, s.fit.s1_prt) 
+
+anova(h.s1_prt.fit, us.fit.s1_prt) 
+
+anova(h.s1_prt.fit, s.fit.s1_prt) 
+
+cbind(h=inspect(h.s1_prt.fit, 'fit.measures'), us=inspect(us.fit.s1_prt, 'fit.measures'), s=inspect(s.fit.s1_prt, 'fit.measures'))
+
 #No significant difference between models suggesting that the saturated model isn't explaining more of the endogeous variables and thus adding the connections in the unsaturated model doesn't change the interpretation and has theoretical value.
 ```
 
@@ -413,14 +560,14 @@ anova(us.fit.s1_prt, s.fit.s1_prt)
 #Hypothesized model
 
 h.s1_crt <- '
-Avg_SC_FT_P3 ~ a*Agree + b*response.diff + c*NEG + d*SUR + f*Pi_social_games_freq_p3_fixed 
-Avg_Succ_FT_P3 ~ g*Agree + h*response.diff + i*NEG + j*SUR + k*Pi_social_games_freq_p3_fixed  
-Avg_LAT1_FT_P3 ~ l*Agree + m*response.diff + n*NEG + o*SUR + p*Pi_social_games_freq_p3_fixed 
-Avg_LAT2_FT_P3 ~ u*Agree + v*response.diff + w*NEG + x*SUR + y*Pi_social_games_freq_p3_fixed 
+Avg_SC_FT_P3 ~ a*Agree + b*response.diff + c*NEG + d*SUR + f*Pi_social_games_freq_p1_fixed 
+Avg_Succ_FT_P3 ~ g*Agree + h*response.diff + i*NEG + j*SUR + k*Pi_social_games_freq_p1_fixed  
+Avg_LAT1_FT_P3 ~ l*Agree + m*response.diff + n*NEG + o*SUR + p*Pi_social_games_freq_p1_fixed 
+Avg_LAT2_FT_P3 ~ u*Agree + v*response.diff + w*NEG + x*SUR + y*Pi_social_games_freq_p1_fixed + Age_p3
 
-NEG ~ q*Agree
-REG ~ r*Agree
-Pi_social_games_freq_p3_fixed ~ s*Agree + t*response.diff
+SUR ~ q*Agree
+NEG ~ r*Agree
+Pi_social_games_freq_p1_fixed ~ s*Agree + t*response.diff
 
 
 indirect1 := q*a
@@ -443,35 +590,39 @@ indirect10 := t*h
 indirect11 := t*m
 '
 
-h.s1_crt.fit <- sem(h.s1_crt, data = df.c,  estimator="mlr", missing = "ML")
+h.s1_crt.fit <- lavaan::sem(h.s1_crt, data = df.c,  estimator = "mlr", missing = "ml.x", fixed.x = FALSE)
 summary(h.s1_crt.fit, fit.measures = TRUE)
+standardizedSolution(h.s1_crt.fit)
 ```
 
 ## Correlation based model
 ```{r study 1 corr model crt}
 #Unsaturated model based on p < .05 from corr matrix
 us.s1_crt <- '
-Avg_Succ_FT_P3 ~ response.diff 
-Avg_SC_FT_P3 ~ response.diff 
-Avg_LAT1_FT_P3 ~ response.diff + Open 
 
-REG ~ Neur + Cons + Extra
-NEG ~ Cons 
+Avg_SC_FT_P3 ~ response.diff + Open 
+Avg_Succ_FT_P3 ~ response.diff + Open
+Avg_LAT1_FT_P3 ~ response.diff + Open 
+Avg_LAT2_FT_P3 ~ response.diff + Open + Age_p3 + Pi_social_games_freq_p1_fixed
+
+Pi_social_games_freq_p1_fixed ~ response.diff
+
 '
 
-us.fit.s1_crt <- sem(us.s1_crt, df.c, estimator = "mlr", missing = "ML")
+us.fit.s1_crt <- lavaan::sem(us.s1_crt, df.c, estimator = "mlr", missing = "ml.x", fixed.x = FALSE)
 summary(us.fit.s1_crt, fit.measures = TRUE)
+standardizedsolution(us.fit.s1_crt)
 ```
 
 ## Alternative Model with direct effects only
 
-```{r study 1 saturdated model crt}
+```{r study 1 saturated model crt}
 s.s1_crt <- '
 Avg_Succ_FT_P3 ~ response.diff
 Avg_SC_FT_P3 ~ response.diff
 Avg_LAT1_FT_P3 ~ response.diff + Open 
 '
-s.fit.s1_crt <- sem(s.s1_crt, df.c, estimator = "mlr", missing = "ML")
+s.fit.s1_crt <- lavaan::sem(s.s1_crt, df.c, estimator = "mlr", missing = "ml.x", fixed.x = FALSE)
 summary(s.fit.s1_crt, fit.measures = TRUE)
 ```
 
@@ -479,6 +630,13 @@ summary(s.fit.s1_crt, fit.measures = TRUE)
 
 ```{r study 1 model compare crt}
 anova(us.fit.s1_crt, s.fit.s1_crt) 
+
+anova(h.s1_crt.fit, us.fit.s1_crt) 
+
+anova(h.s1_crt.fit, s.fit.s1_crt) 
+
+
+cbind(h=inspect(h.s1_crt.fit, 'fit.measures'), us=inspect(us.fit.s1_crt, 'fit.measures'), s=inspect(s.fit.s1_crt, 'fit.measures'))
 #No significant difference between models suggesting that the saturated model isn't explaining more of the endogeous variables and thus adding the connections in the unsaturated model doesn't change the interpretation and has theoretical value.
 ```
 
@@ -490,13 +648,182 @@ anova(us.fit.s1_crt, s.fit.s1_crt)
 #Hypothesized model
 
 h.s2_prt <- '
-Avg_SC_PR_P3 ~ a*IPIP6_HonHum + b*response.diff + c*NEG + d*SUR + f*Pi_social_games_freq_p3_fixed 
-Avg_Succ_PR_P3 ~ g*IPIP6_HonHum + h*response.diff + i*NEG + j*SUR + k*Pi_social_games_freq_p3_fixed  
-Avg_Lat_PR_P3 ~ l*IPIP6_HonHum + m*response.diff + n*NEG + o*SUR + p*Pi_social_games_freq_p3_fixed 
+Avg_SC_PR_P3 ~ a*IPIP6_HonHum + c*NEG + d*SUR + f*Pi_social_games_freq_p1_fixed + Gender.bi
+Avg_Succ_PR_P3 ~ g*IPIP6_HonHum + i*NEG + j*SUR + k*Pi_social_games_freq_p1_fixed  
+Avg_Lat_PR_P3 ~ l*IPIP6_HonHum + n*NEG + o*SUR + p*Pi_social_games_freq_p1_fixed 
 
 NEG ~ q*IPIP6_HonHum
-REG ~ r*IPIP6_HonHum
-Pi_social_games_freq_p3_fixed ~ s*IPIP6_HonHum + t*response.diff
+SUR ~ r*IPIP6_HonHum
+Pi_social_games_freq_p1_fixed ~ s*IPIP6_HonHum 
+
+
+indirect1 := q*a
+indirect2 := q*g
+indirect3 := q*l
+
+indirect3 := r*a
+indirect4 := r*g
+indirect5 := r*l
+
+indirect6 := s*a
+indirect7 := s*g
+indirect8 := s*l
+'
+
+h.s2_prt.fit <- lavaan::sem(h.s2_prt, data = df.c,  estimator = "mlr", missing = "ml.x", fixed.x = FALSE)
+summary(h.s2_prt.fit, fit.measures = TRUE)
+standardizedsolution(h.s2_prt.fit)
+```
+
+## Correlation based model
+
+```{r study 2 corr model prt}
+
+#Unsaturated model based on p < .05 from corr matrix
+us.s2_prt <- '
+Avg_SC_PR_P3 ~ a*IPIP6_HonHum + Gender.bi + z*Pi_social_games_freq_p1_fixed + SUR
+Avg_Succ_PR_P3 ~ c*IPIP6_HonHum + Pi_social_games_freq_p1_fixed + SUR
+Avg_Lat_PR_P3 ~ d*IPIP6_HonHum + Pi_social_games_freq_p1_fixed + SUR
+
+Pi_social_games_freq_p1_fixed ~ b*IPIP6_HonHum
+SUR ~ IPIP6_HonHum
+'
+us.fit.s2_prt <- lavaan::sem(us.s2_prt, df.c, estimator = "mlr", missing = "ml.x", fixed.x = FALSE)
+summary(us.fit.s2_prt, fit.measures = TRUE)
+standardizedsolution(us.fit.s2_prt)
+```
+
+## Alternative Model with direct effects only
+
+```{r study 2 sat model prt}
+
+#saturated model based on p < .05 from corr matrix
+s.s2_prt <- '
+Avg_SC_PR_P3 ~ IPIP6_HonHum + Gender.bi
+Avg_Succ_PR_P3 ~ IPIP6_HonHum
+
+Avg_SC_PR_P3 ~~ Avg_Succ_PR_P3
+'
+s.fit.s2_prt <- lavaan::sem(s.s2_prt, df.c, estimator = "mlr", missing = "ml.x", fixed.x = FALSE)
+summary(s.fit.s2_prt, fit.measures = TRUE)
+```
+
+## Model compare
+
+```{r study 2 model compare prt}
+anova(s.fit.s2_prt, us.fit.s2_prt) 
+anova(h.s2_prt.fit, us.fit.s2_prt) 
+anova(h.s2_prt.fit, s.fit.s2_prt) 
+
+cbind(h=inspect(h.s2_prt.fit, 'fit.measures'), us=inspect(us.fit.s2_prt, 'fit.measures'), s=inspect(s.fit.s2_prt, 'fit.measures'))
+#No significant difference between models suggesting that the saturated model isn't explaining more of the endogeous variables and thus adding the connections in the unsaturated model doesn't change the interpretation and has theoretical value.
+```
+
+# Study 2 CRT Model
+
+## Hypothesized model
+*The hypothesized model is a poor fit*
+```{r study 2 hypothesized model crt}
+#Hypothesized model
+
+h.s2_crt <- '
+Avg_SC_FT_P3 ~ a*IPIP6_HonHum + c*NEG + d*SUR + f*Pi_social_games_freq_p1_fixed 
+Avg_Succ_FT_P3 ~ g*IPIP6_HonHum + i*NEG + j*SUR + k*Pi_social_games_freq_p1_fixed  
+Avg_LAT1_FT_P3 ~ l*IPIP6_HonHum + n*NEG + o*SUR + p*Pi_social_games_freq_p1_fixed 
+Avg_LAT2_FT_P3 ~ u*IPIP6_HonHum + w*NEG + x*SUR + y*Pi_social_games_freq_p1_fixed + Age_p3
+
+NEG ~ q*IPIP6_HonHum
+SUR ~ r*IPIP6_HonHum
+Pi_social_games_freq_p1_fixed ~ s*IPIP6_HonHum 
+
+
+indirect1 := q*a
+indirect2 := q*g
+indirect3 := q*l
+indirect3a := q*u
+
+indirect3 := r*a
+indirect4 := r*g
+indirect5 := r*l
+indirect5a := r*u
+
+indirect6 := s*a
+indirect7 := s*g
+indirect8 := s*l
+indirect8a := s*u
+'
+
+h.s2_crt.fit <- lavaan::sem(h.s2_crt, data = df.c,  estimator = "mlr", missing = "ml.x", fixed.x = FALSE)
+summary(h.s2_crt.fit, fit.measures = TRUE)
+standardizedsolution(h.s2_crt.fit)
+```
+
+## Correlation based model
+**The correlation matrix suggests that IPIP6 personality variables are not related to any endogenous variables and thus a follow up model test is not necessary**
+
+
+# STATISTICS WITH OUTLIERS WINDSORIZED
+
+## Imputation of missing data  
+```{r mice for missing data wind, results = 'hide'}
+#training set
+init.w = mice(df.w, pred=quickpred(df.w, exclude = c("Gender", "Age_p3")), maxit=0) #Excludes constants and admin var
+meth.w = init.w$method
+predM.w = init.w$predictorMatrix
+
+predM.w[, c("Avg_LAT2_FT_P3","Age_p3", "Gender",
+          "IPIP6_Cons", "IPIP6_Neur","IPIP6_Open",
+          "IPIP6_HonHum","IPIP6_Extra","IPIP6_Agree")]=0 #Variables with low outflux excluded as predic
+
+meth.w[c("Age_p3", "Gender")]="" # excluded from predictions
+
+set.seed(103) #for reproducability
+df.imp.w = mice(df.w, m=10, method = meth.w, predictorMatrix = predM.w, maxit = 10, print = FALSE)
+
+summary(df.imp.w)
+df.imp.w$predictorMatrix #check predictor matrix
+```
+
+## Imputation dfs diagnostics 
+```{r model diagnostics wind}
+#This is to check that the distributions generally follow the same pattern
+stripplot(df.imp.w, pch = c(21, 20), cex = c(1, 1.5))
+
+densityplot(df.imp.w, layout = c(3, 1))
+```
+
+# lavaan::sem models
+
+###Correlation matricies for all model dfs
+```{r correlation matrices wind}
+# correlation coefficients of ffm, cvs, prt variables
+pr.ffm.res.w <- miceadds::micombine.cor(mi.res=df.imp.w, variables=c(3:5,10:19))
+
+# correlation coefficients of ffm, cvs, ft variables
+ft.ffm.res.w <- miceadds::micombine.cor(mi.res=df.imp.w, variables=c(6:19))
+
+# correlation coefficients of sfm, cvs, prt variables
+pr.sfm.res.w <- miceadds::micombine.cor(mi.res=df.imp.w, variables=c(3:5,10,11,17:25))
+
+# correlation coefficients of sfm, cvs, prt variables
+ft.sfm.res.w <- miceadds::micombine.cor(mi.res=df.imp.w, variables=c(6:11,17:25))
+```
+
+# Study 1 PRT Model
+
+## Hypothesized model  
+*The hypothesized model is a poor fit*
+```{r study 1 hypothesized model prt wind}
+#Hypothesized model
+
+h.s1_prt.w <- '
+Avg_SC_PR_P3 ~ a*Agree + b*response.diff + c*NEG + d*SUR + f*Pi_social_games_freq_p1_fixed 
+Avg_Succ_PR_P3 ~ g*Agree + h*response.diff + i*NEG + j*SUR + k*Pi_social_games_freq_p1_fixed  
+Avg_Lat_PR_P3 ~ l*Agree + m*response.diff + n*NEG + o*SUR + p*Pi_social_games_freq_p1_fixed 
+
+NEG ~ q*Agree
+REG ~ r*Agree
+Pi_social_games_freq_p1_fixed ~ s*Agree + t*response.diff
 
 
 indirect1 := q*a
@@ -516,45 +843,203 @@ indirect10 := t*h
 indirect11 := t*m
 '
 
-h.s2_prt.fit <- sem(h.s2_prt, data = df.c,  estimator="mlr", missing = "ML")
-summary(h.s2_prt.fit, fit.measures = TRUE)
+h.s1_prt.fit.w <- lavaan::sem(h.s1_prt.w, data = df.w,  estimator = "mlr", missing = "ml.x", fixed.x = FALSE)
+summary(h.s1_prt.fit.w, fit.measures = TRUE)
 ```
 
 ## Correlation based model
 
-```{r study 2 corr model prt}
-
-#Unsaturated model based on p < .05 from corr matrix
-us.s2_prt <- '
-Avg_SC_PR_P3 ~ IPIP6_HonHum 
-Avg_Succ_PR_P3 ~ IPIP6_HonHum
-Pi_social_games_freq_p3_fixed ~	IPIP6_Open + IPIP6_Extra
-SUR ~ IPIP6_HonHum
-
+```{r study 1 correlational model prt wind}
+#Unsaturated model based on p < .05 from corr matrix of imputed data for consistency across models
+us.s1_prt.w <- '
+Avg_SC_PR_P3 ~ e*Agree + f*Neur + a*NEG + b*REG
+Avg_Succ_PR_P3 ~ g*Neur 
+NEG ~ d*Neur + Cons
+REG ~ c*Neur + Cons
+indirect1 := d*f
+indirect2 := c*g
+total := e + (d * f) + (c * g)
+NEG ~~ REG
+Avg_SC_PR_P3 ~~ Avg_Succ_PR_P3
 '
-us.fit.s2_prt <- sem(us.s2_prt, df.c, estimator = "mlr", missing = "ML")
-summary(us.fit.s2_prt, fit.measures = TRUE)
+
+us.fit.s1_prt.w <- lavaan::sem(us.s1_prt.w, df.w, estimator = "mlr", missing = "ML")
+summary(us.fit.s1_prt.w, fit.measures = TRUE)
+fitMeasures(us.fit.s1_prt.w)
+standardizedSolution(us.fit.s1_prt.w)
 ```
 
 ## Alternative Model with direct effects only
 
-```{r study 2 sat model prt}
+```{r study 1 direct effects model prt wind}
+#Temperament not a mediator so removed from model to saturate model
+s.s1_prt.w <- '
+Avg_SC_PR_P3 ~ e*Agree + f*Neur
+Avg_Succ_PR_P3 ~ g*Neur 
+Avg_SC_PR_P3 ~~ Avg_Succ_PR_P3
+'
+s.fit.s1_prt.w <- lavaan::sem(s.s1_prt.w, df.w, estimator = "mlr", missing = "ML")
+summary(s.fit.s1_prt.w)
+#lavaanPlot::lavaanPlot(name = "plot", s.fit.s1_prt.w, coefs = TRUE, stand = TRUE, sig = .05)
+```
+
+## Model compare
+
+```{r study 1 model compare prt wind}
+anova(us.fit.s1_prt.w, s.fit.s1_prt.w) 
+#No significant difference between models suggesting that the saturated model isn't explaining more of the endogeous variables and thus adding the connections in the unsaturated model doesn't change the interpretation and has theoretical value.
+```
+
+# Study 1 CRT Model
+
+## Hypothesized model
+*The hypothesized model is a poor fit*
+```{r study 1 hypothesized model crt wind}
+#Hypothesized model
+
+h.s1_crt.w <- '
+Avg_SC_FT_P3 ~ a*Agree + b*response.diff + c*NEG + d*SUR + f*Pi_social_games_freq_p1_fixed 
+Avg_Succ_FT_P3 ~ g*Agree + h*response.diff + i*NEG + j*SUR + k*Pi_social_games_freq_p1_fixed  
+Avg_LAT1_FT_P3 ~ l*Agree + m*response.diff + n*NEG + o*SUR + p*Pi_social_games_freq_p1_fixed 
+Avg_LAT2_FT_P3 ~ u*Agree + v*response.diff + w*NEG + x*SUR + y*Pi_social_games_freq_p1_fixed 
+
+NEG ~ q*Agree
+REG ~ r*Agree
+Pi_social_games_freq_p1_fixed ~ s*Agree + t*response.diff
+
+
+indirect1 := q*a
+indirect2 := q*g
+indirect3 := q*l
+indirect3a := q*u
+
+indirect3 := r*a
+indirect4 := r*g
+indirect5 := r*l
+indirect5a := r*u
+
+indirect6 := s*a
+indirect7 := s*g
+indirect8 := s*l
+indirect8a := s*u
+
+indirect9 := t*b
+indirect10 := t*h
+indirect11 := t*m
+'
+
+h.s1_crt.fit.w <- lavaan::sem(h.s1_crt.w, data = df.w,  estimator = "mlr", missing = "ml.x", fixed.x = FALSE)
+summary(h.s1_crt.fit.w, fit.measures = TRUE)
+```
+
+## Correlation based model
+```{r study 1 corr model crt wind}
+#Unsaturated model based on p < .05 from corr matrix
+us.s1_crt.w <- '
+Avg_Succ_FT_P3 ~ response.diff 
+Avg_SC_FT_P3 ~ response.diff 
+Avg_LAT1_FT_P3 ~ response.diff + Open 
+
+REG ~ Neur + Cons + Extra
+NEG ~ Cons 
+'
+
+us.fit.s1_crt.w <- lavaan::sem(us.s1_crt.w, df.w, estimator = "mlr", missing = "ML")
+summary(us.fit.s1_crt.w, fit.measures = TRUE)
+```
+
+## Alternative Model with direct effects only
+
+```{r study 1 saturdated model crt wind}
+s.s1_crt.w <- '
+Avg_Succ_FT_P3 ~ response.diff
+Avg_SC_FT_P3 ~ response.diff
+Avg_LAT1_FT_P3 ~ response.diff + Open 
+'
+s.fit.s1_crt.w <- lavaan::sem(s.s1_crt.w, df.w, estimator = "mlr", missing = "ML")
+summary(s.fit.s1_crt.w, fit.measures = TRUE)
+```
+
+## Model compare
+
+```{r study 1 model compare crt}
+anova(us.fit.s1_crt.w, s.fit.s1_crt.w) 
+#No significant difference between models suggesting that the saturated model isn't explaining more of the endogeous variables and thus adding the connections in the unsaturated model doesn't change the interpretation and has theoretical value.
+```
+
+# Study 2 PRT Model
+
+## Hypothesized model
+*The hypothesized model is a poor fit*
+```{r study 2 hypothesized model prt wind}
+#Hypothesized model
+
+h.s2_prt.w <- '
+Avg_SC_PR_P3 ~ a*IPIP6_HonHum + b*response.diff + c*NEG + d*SUR + f*Pi_social_games_freq_p1_fixed 
+Avg_Succ_PR_P3 ~ g*IPIP6_HonHum + h*response.diff + i*NEG + j*SUR + k*Pi_social_games_freq_p1_fixed  
+Avg_Lat_PR_P3 ~ l*IPIP6_HonHum + m*response.diff + n*NEG + o*SUR + p*Pi_social_games_freq_p1_fixed 
+
+NEG ~ q*IPIP6_HonHum
+REG ~ r*IPIP6_HonHum
+Pi_social_games_freq_p1_fixed ~ s*IPIP6_HonHum + t*response.diff
+
+
+indirect1 := q*a
+indirect2 := q*g
+indirect3 := q*l
+
+indirect3 := r*a
+indirect4 := r*g
+indirect5 := r*l
+
+indirect6 := s*a
+indirect7 := s*g
+indirect8 := s*l
+
+indirect9 := t*b
+indirect10 := t*h
+indirect11 := t*m
+'
+
+h.s2_prt.fit.w <- lavaan::sem(h.s2_prt.w, data = df.w,  estimator = "mlr", missing = "ml.x", fixed.x = FALSE)
+summary(h.s2_prt.fit.w, fit.measures = TRUE)
+```
+
+## Correlation based model
+
+```{r study 2 corr model prt wind}
+
+#Unsaturated model based on p < .05 from corr matrix
+us.s2_prt.w <- '
+Avg_SC_PR_P3 ~ IPIP6_HonHum 
+Avg_Succ_PR_P3 ~ IPIP6_HonHum
+Pi_social_games_freq_p1_fixed ~	IPIP6_Open + IPIP6_Extra
+SUR ~ IPIP6_HonHum
+
+'
+us.fit.s2_prt.w <- lavaan::sem(us.s2_prt.w, df.w, estimator = "mlr", missing = "ML")
+summary(us.fit.s2_prt.w, fit.measures = TRUE)
+```
+
+## Alternative Model with direct effects only
+
+```{r study 2 sat model prt wind}
 
 #saturated model based on p < .05 from corr matrix
-s.s2_prt <- '
+s.s2_prt.w <- '
 Avg_SC_PR_P3 ~ IPIP6_HonHum 
 Avg_Succ_PR_P3 ~ IPIP6_HonHum
 
 Avg_SC_PR_P3 ~~ Avg_Succ_PR_P3
 '
-s.fit.s2_prt <- sem(s.s2_prt, df.c, estimator = "mlr", missing = "ML")
-summary(s.fit.s2_prt, fit.measures = TRUE)
+s.fit.s2_prt.w <- lavaan::sem(s.s2_prt.w, df.w, estimator = "mlr", missing = "ML")
+summary(s.fit.s2_prt.w, fit.measures = TRUE)
 ```
 
 ## Model compare
 
-```{r study 2 model compare prt}
-anova(s.fit.s2_prt, us.fit.s2_prt) 
+```{r study 2 model compare prt wind}
+anova(s.fit.s2_prt.w, us.fit.s2_prt.w) 
 #No significant difference between models suggesting that the saturated model isn't explaining more of the endogeous variables and thus adding the connections in the unsaturated model doesn't change the interpretation and has theoretical value.
 ```
 
@@ -562,18 +1047,18 @@ anova(s.fit.s2_prt, us.fit.s2_prt)
 
 ## Hypothesized model
 *The hypothesized model is a poor fit*
-```{r study 2 hypothesized model crt}
+```{r study 2 hypothesized model crt wind}
 #Hypothesized model
 
-h.s2_crt <- '
-Avg_SC_FT_P3 ~ a*IPIP6_HonHum + c*NEG + d*SUR + f*Pi_social_games_freq_p3_fixed 
-Avg_Succ_FT_P3 ~ g*IPIP6_HonHum + i*NEG + j*SUR + k*Pi_social_games_freq_p3_fixed  
-Avg_LAT1_FT_P3 ~ l*IPIP6_HonHum + n*NEG + o*SUR + p*Pi_social_games_freq_p3_fixed 
-Avg_LAT2_FT_P3 ~ u*IPIP6_HonHum + w*NEG + x*SUR + y*Pi_social_games_freq_p3_fixed 
+h.s2_crt.w <- '
+Avg_SC_FT_P3 ~ a*IPIP6_HonHum + c*NEG + d*SUR + f*Pi_social_games_freq_p1_fixed 
+Avg_Succ_FT_P3 ~ g*IPIP6_HonHum + i*NEG + j*SUR + k*Pi_social_games_freq_p1_fixed  
+Avg_LAT1_FT_P3 ~ l*IPIP6_HonHum + n*NEG + o*SUR + p*Pi_social_games_freq_p1_fixed 
+Avg_LAT2_FT_P3 ~ u*IPIP6_HonHum + w*NEG + x*SUR + y*Pi_social_games_freq_p1_fixed 
 
 NEG ~ q*IPIP6_HonHum
 REG ~ r*IPIP6_HonHum
-Pi_social_games_freq_p3_fixed ~ s*IPIP6_HonHum 
+Pi_social_games_freq_p1_fixed ~ s*IPIP6_HonHum 
 
 
 indirect1 := q*a
@@ -592,10 +1077,556 @@ indirect8 := s*l
 indirect8a := s*u
 '
 
-h.s2_crt.fit <- sem(h.s2_crt, data = df.c,  estimator="mlr", missing = "ML")
-summary(h.s2_crt.fit, fit.measures = TRUE)
+h.s2_crt.fit.w <- lavaan::sem(h.s2_crt.w, data = df.w,  estimator = "mlr", missing = "ml.x", fixed.x = FALSE)
+summary(h.s2_crt.fit.w, fit.measures = TRUE)
 ```
 
 ## Correlation based model
 **The correlation matrix suggests that IPIP6 personality variables are not related to any endogenous variables and thus a follow up model test is not necessary**
+
+# Secondary analyses & controls
+
+## Gender Differences
+
+### PRT
+*Gender differences for spatial coordination, females slightly more coordinated*
+```{r prt gender}
+#test for gender differences in spatial coordination in the PRT
+wilcox.test(Avg_SC_PR_P3 ~ Gender, data = df.c, 
+            conf.int = T, conf.level = .95, paired=FALSE, exact = FALSE)
+Boys_PR<- df.c[which(df.c$Gender == 1),]
+Girls_PR<- df.c[which(df.c$Gender == 2),]
+median(Boys_PR$Avg_SC_PR_P3, na.rm = TRUE)
+median(Girls_PR$Avg_SC_PR_P3, na.rm = TRUE)
+
+
+#test for gender differences in success in the PRT
+wilcox.test(Avg_Succ_PR_P3 ~ Gender, data = df.c, paired=FALSE)
+
+#test for gender differences in latency to success in the PRT
+wilcox.test(Avg_Lat_PR_P3 ~ Gender, data = df.c, paired=FALSE)
+```
+
+### CRT
+*No gender differences in CRT*
+```{r crt gender}
+#test for gender differences in spatial coordination in the CRT
+wilcox.test(Avg_SC_FT_P3 ~ Gender, data = df.c)
+
+#test for gender differences in success in the CRT
+wilcox.test(Avg_Succ_FT_P3 ~ Gender, data = df.c)
+
+#test for gender differences for latency action 1 in the CRT
+wilcox.test(Avg_LAT1_FT_P3 ~ Gender, data = df.c)
+
+#test for gender differences for latency action 2 in the CRT
+wilcox.test(Avg_LAT2_FT_P3 ~ Gender, data = df.c)
+```
+
+## Age Differences 
+
+### PRT
+*No age differences*
+```{r prt age}
+#is age related to spatial coordination 
+ag.sc.pr.corr <- cor.test(x = df.c$Age_p3, 
+                          y = df.c$Avg_SC_PR_P3, method = 'pearson')
+ag.sc.pr.corr
+
+#is age related to success the PRT
+ag.succ.pr.corr <- cor.test(x = df.c$Age_p3, 
+                            y = df.c$Avg_Succ_PR_P3, method = 'pearson')
+ag.succ.pr.corr
+
+#is age related to latency in the PRT
+ag.lat.pr.corr <- cor.test(x = df.c$Age_p3, 
+                           y = df.c$Avg_Lat_PR_P3, method = 'pearson')
+```
+
+### CRT
+*Age differences for Latency Action 2*
+```{r crt age}
+#is age related to spatial coordination 
+ag.sc.ft.corr <- cor.test(x = df.c$Age_p3, 
+                          y = df.c$Avg_SC_FT_P3, method = 'pearson')
+ag.sc.ft.corr
+
+#is age related to success the FT
+ag.succ.ft.corr <- cor.test(x = df.c$Age_p3, 
+                            y = df.c$Avg_Succ_FT_P3, method = 'pearson')
+ag.succ.ft.corr
+
+#is age related to latency1 in the FT
+ag.lat1.ft.corr <- cor.test(x = df.c$Age_p3, 
+                           y = df.c$Avg_LAT1_FT_P3, method = 'pearson')
+ag.lat1.ft.corr
+
+#is age related to latency2 in the FT
+ag.lat2.ft.corr <- cor.test(x = df.c$Age_p3, 
+                           y = df.c$Avg_LAT2_FT_P3, method = 'pearson')
+ag.lat2.ft.corr
+```
+
+# Variables and descriptives 
+
+## Parent SES
+
+```{r ses calc, include = FALSE}
+#Highest education level achieved all
+#none
+Study1.eth$Edu.all_Cat[Study1.eth$Parent_HighestSchoolQual_p5 == 0 
+                       & Study1.eth$Parent_otherqual_spec_p5 == 0 
+                       | is.na(Study1.eth$Parent_otherqual_spec_p5)] <- 1
+
+#6th form or less/other
+Study1.eth$Edu.all_Cat[Study1.eth$Parent_HighestSchoolQual_p5 == 1 
+                       | Study1.eth$Parent_HighestSchoolQual_p5 == 2 
+                       | Study1.eth$Parent_HighestSchoolQual_p5 == 4 
+                       & Study1.eth$Parent_otherqual_spec_p5 == 0 
+                       | is.na(Study1.eth$Parent_otherqual_spec_p5)] <- 2
+
+#7th form only
+Study1.eth$Edu.all_Cat[Study1.eth$Parent_HighestSchoolQual_p5 == 3 
+                       & Study1.eth$Parent_otherqual_spec_p5 == 0 
+                       | is.na(Study1.eth$Parent_otherqual_spec_p5)] <- 3
+
+#Bachelors/Dip
+Study1.eth$Edu.all_Cat[Study1.eth$Parent_HighestSchoolQual_p5 == 0 
+                       | Study1.eth$Parent_HighestSchoolQual_p5 == 1 
+                       | Study1.eth$Parent_HighestSchoolQual_p5 == 2 
+                       | Study1.eth$Parent_HighestSchoolQual_p5 == 3 
+                       & Study1.eth$Parent_otherqual_spec_p5 == 1] <- 4
+
+#Post grad
+Study1.eth$Edu.all_Cat[Study1.eth$Parent_HighestSchoolQual_p5 == 0 
+                       | Study1.eth$Parent_HighestSchoolQual_p5 == 1 
+                       | Study1.eth$Parent_HighestSchoolQual_p5 == 2 
+                       | Study1.eth$Parent_HighestSchoolQual_p5 == 3 
+                       & Study1.eth$Parent_otherqual_spec_p5 == 2 
+                       | Study1.eth$Parent_otherqual_spec_p5 == 3 ] <- 5
+
+#Other Tertiary
+Study1.eth$Edu.all_Cat[Study1.eth$Parent_HighestSchoolQual_p5 == 0 
+                       | Study1.eth$Parent_HighestSchoolQual_p5 == 1 
+                       | Study1.eth$Parent_HighestSchoolQual_p5 == 2 
+                       | Study1.eth$Parent_HighestSchoolQual_p5 == 3 
+                       & Study1.eth$Parent_otherqual_spec_p5 == 4 ] <- 6
+
+Study1.eth$Edu.all_label[Study1.eth$Edu.all_Cat == 1] <- "None"
+Study1.eth$Edu.all_label[Study1.eth$Edu.all_Cat == 2] <- "6th form or less"
+Study1.eth$Edu.all_label[Study1.eth$Edu.all_Cat == 3] <- "7th form"
+Study1.eth$Edu.all_label[Study1.eth$Edu.all_Cat == 4] <- "Bachelors/PgDip"
+Study1.eth$Edu.all_label[Study1.eth$Edu.all_Cat == 5] <- "Honours, Masters, PhD"
+Study1.eth$Edu.all_label[Study1.eth$Edu.all_Cat == 6] <- "Other tertiary"
+Study1.eth$Edu.all_label[is.na(Study1.eth$Edu.all_Cat)] <- "Unknown/Missing"
+```
+
+```{r ses info}
+table(Study1.eth$Edu.all_label)
+```
+
+## PCG info
+
+```{r pcg info}
+#Phase 1
+table(df.m$PCG_p1)
+
+#Phase 5
+table(df.m$PCG_p5)
+
+#Phase 6
+table(df.m$PCG_p6)
+
+```
+
+## Infant Gender
+
+```{r gender}
+
+table(df.m$Gender_Label)
+
+```
+
+## Infant Age
+
+```{r age}
+#Phase 1
+mean(df.m$Age_p1)
+sd(df.m$Age_p1)
+
+#Phase 3
+mean(df.m$Age_p3)
+sd(df.m$Age_p3)
+
+#Phase 5
+mean(Study1.eth$P5_Age, na.rm = TRUE)
+sd(Study1.eth$P5_Age, na.rm = TRUE)
+```
+
+## Infant Ethnicity
+
+```{r eth calc, include = FALSE}
+#Ethnicity categories
+#NZE = 1
+#NZE/Maori =2
+#NZE/Asian = 3
+#NZE/Other = 4
+#--
+#Other = 5
+#Asian = 7
+#Pacific = 8
+#Other European = 9
+#NZE/O-E = 10
+#NZE-Pacific = 11
+#NZE-MELAA = 12
+#Asian-OE = 13
+#Maori-OE = 14
+#MELLAA-OE = 15
+
+#NZE
+Study1.eth$Eth_Cat[Study1.eth$NZEur_p1 == 1 & Study1.eth$Maori_p1 == 0 
+               & Study1.eth$Asian_p1 == 0 & Study1.eth$Pacific_p1 == 0
+               & Study1.eth$MidEastLatAmAfrican_p1 == 0 & Study1.eth$OtherEur_p1 == 0 
+               & Study1.eth$Other_p1 == 0] <- 1
+
+#NZE/Maori =2
+Study1.eth$Eth_Cat[Study1.eth$NZEur_p1 == 1 & Study1.eth$Maori_p1 == 1 
+               & Study1.eth$Asian_p1 == 0 & Study1.eth$Pacific_p1 == 0
+               & Study1.eth$MidEastLatAmAfrican_p1 == 0 & Study1.eth$OtherEur_p1 == 0 
+               & Study1.eth$Other_p1 == 0] <- 2
+
+#NZE/Asian = 3
+Study1.eth$Eth_Cat[Study1.eth$NZEur_p1 == 1 & Study1.eth$Maori_p1 == 0 
+               & Study1.eth$Asian_p1 == 1 & Study1.eth$Pacific_p1 == 0
+               & Study1.eth$MidEastLatAmAfrican_p1 == 0 & Study1.eth$OtherEur_p1 == 0 
+               & Study1.eth$Other_p1 == 0] <- 3
+
+
+#NZE/Other/O-E = 4
+Study1.eth$Eth_Cat[Study1.eth$NZEur_p1 == 1 & Study1.eth$Maori_p1 == 0 
+               & Study1.eth$Asian_p1 == 0 & Study1.eth$Pacific_p1 == 0
+               & Study1.eth$MidEastLatAmAfrican_p1 == 0 & Study1.eth$OtherEur_p1 == 1 
+               & Study1.eth$Other_p1 == 1] <- 4
+
+#Other = 5
+Study1.eth$Eth_Cat[Study1.eth$NZEur_p1 == 0 & Study1.eth$Maori_p1 == 0 
+               & Study1.eth$Asian_p1 == 0 & Study1.eth$Pacific_p1 == 0
+               & Study1.eth$MidEastLatAmAfrican_p1 == 0 & Study1.eth$OtherEur_p1 == 0 
+               & Study1.eth$Other_p1 == 1] <- 5
+
+#Asian = 7
+Study1.eth$Eth_Cat[Study1.eth$NZEur_p1 == 0 & Study1.eth$Maori_p1 == 0 
+               & Study1.eth$Asian_p1 == 1 & Study1.eth$Pacific_p1 == 0
+               & Study1.eth$MidEastLatAmAfrican_p1 == 0 & Study1.eth$OtherEur_p1 == 0 
+               & Study1.eth$Other_p1 == 0]<- 7
+
+
+#Pacific = 8
+Study1.eth$Eth_Cat[Study1.eth$NZEur_p1 == 0 & Study1.eth$Maori_p1 == 0
+               & Study1.eth$Asian_p1 == 0 & Study1.eth$Pacific_p1 == 1
+               & Study1.eth$MidEastLatAmAfrican_p1 == 0 & Study1.eth$OtherEur_p1 == 0 
+               & Study1.eth$Other_p1 == 0] <- 8
+
+
+#Other European = 9
+Study1.eth$Eth_Cat[Study1.eth$NZEur_p1 == 0 & Study1.eth$Maori_p1 == 0 
+               & Study1.eth$Asian_p1 == 0 & Study1.eth$Pacific_p1 == 0
+               & Study1.eth$MidEastLatAmAfrican_p1 == 0 & Study1.eth$OtherEur_p1 == 1 
+               & Study1.eth$Other_p1 == 0] <- 9
+
+#NZE-Pacific = 11
+Study1.eth$Eth_Cat[Study1.eth$NZEur_p1 == 1 & Study1.eth$Maori_p1 == 0 
+               & Study1.eth$Asian_p1 == 0 & Study1.eth$Pacific_p1 == 1
+               & Study1.eth$MidEastLatAmAfrican_p1 == 0 & Study1.eth$OtherEur_p1 == 0 
+               & Study1.eth$Other_p1 == 0] <- 11
+
+
+#NZE-MELAA = 12
+Study1.eth$Eth_Cat[Study1.eth$NZEur_p1 == 1 & Study1.eth$Maori_p1 == 0 
+               & Study1.eth$Asian_p1 == 0 & Study1.eth$Pacific_p1 == 0
+               & Study1.eth$MidEastLatAmAfrican_p1 == 1 & Study1.eth$OtherEur_p1 == 0
+               & Study1.eth$Other_p1 == 0] <- 12
+
+
+#Asian-OE = 13
+Study1.eth$Eth_Cat[Study1.eth$NZEur_p1 == 0 & Study1.eth$Maori_p1 == 0 
+               & Study1.eth$Asian_p1 == 1 & Study1.eth$Pacific_p1 == 0
+               & Study1.eth$MidEastLatAmAfrican_p1 == 0 & Study1.eth$OtherEur_p1 == 1
+               & Study1.eth$Other_p1 == 0] <- 13
+
+#Maori-OE = 14
+Study1.eth$Eth_Cat[Study1.eth$NZEur_p1 == 0 & Study1.eth$Maori_p1 == 1 
+               & Study1.eth$Asian_p1 == 0 & Study1.eth$Pacific_p1 == 0
+               & Study1.eth$MidEastLatAmAfrican_p1 == 0 & Study1.eth$OtherEur_p1 == 1
+               & Study1.eth$Other_p1 == 0] <- 14
+
+#MELLAA-OE = 15
+Study1.eth$Eth_Cat[Study1.eth$NZEur_p1 == 0 & Study1.eth$Maori_p1 == 0 
+               & Study1.eth$Asian_p1 == 0 & Study1.eth$Pacific_p1 == 0
+               & Study1.eth$MidEastLatAmAfrican_p1 == 1 & Study1.eth$OtherEur_p1 == 1
+               & Study1.eth$Other_p1 == 0] <- 15
+
+Study1.eth$Eth_Cat[is.na(Study1.eth$Eth_Cat)] <- 16
+
+Study1.eth$Eth_CatLabel[Study1.eth$Eth_Cat == 1] <- "NZE"
+Study1.eth$Eth_CatLabel[Study1.eth$Eth_Cat == 7] <- "Asian"
+Study1.eth$Eth_CatLabel[Study1.eth$Eth_Cat == 8] <- "Pacific"
+Study1.eth$Eth_CatLabel[Study1.eth$Eth_Cat == 9] <- "Other European (OE)"
+Study1.eth$Eth_CatLabel[Study1.eth$Eth_Cat == 5] <- "Other"
+Study1.eth$Eth_CatLabel[Study1.eth$Eth_Cat == 2] <- "NZE/Maori"
+Study1.eth$Eth_CatLabel[Study1.eth$Eth_Cat == 3] <- "NZE/Asian"
+Study1.eth$Eth_CatLabel[Study1.eth$Eth_Cat == 4] <- "NZE/Other/OE"
+Study1.eth$Eth_CatLabel[Study1.eth$Eth_Cat == 11] <- "NZE-Pacific"
+Study1.eth$Eth_CatLabel[Study1.eth$Eth_Cat == 12] <- "NZE_MELAA"
+Study1.eth$Eth_CatLabel[Study1.eth$Eth_Cat == 13] <- "Asian-OE"
+Study1.eth$Eth_CatLabel[Study1.eth$Eth_Cat == 14] <- "Maori-OE"
+Study1.eth$Eth_CatLabel[Study1.eth$Eth_Cat == 15] <- "MELLAA-OE"
+Study1.eth$Eth_CatLabel[Study1.eth$Eth_Cat == 16] <- "2 or more"
+```
+
+
+```{r eth}
+
+table(Study1.eth$Eth_CatLabel)
+
+```
+
+## CVS 
+
+```{r cvs}
+with(df.c, hist(response.diff,breaks = 10,
+                   xlab = "ego/alt score",
+                   main = "hist parent response"))
+mean(df.c$response.diff, na.rm = TRUE)
+sd(df.c$response.diff, na.rm = TRUE)
+range(df.c$response.diff, na.rm = TRUE)
+sum(!is.na(df.c$response.diff))
+
+#number responses
+mean(df.m$no_of_op_p1, na.rm = TRUE)
+sd(df.m$no_of_op_p1, na.rm = TRUE)
+```
+
+## SG
+
+```{r parent frequency of social games p1}
+with(df.c, hist(Pi_social_games_freq_p1_fixed,breaks = 10,
+                   xlab = "# social games per week",
+                   main = "hist parent report playing \n social games"))
+mean(df.c$Pi_social_games_freq_p1_fixed, na.rm = TRUE)
+sd(df.c$Pi_social_games_freq_p1_fixed, na.rm = TRUE)
+range(df.c$Pi_social_games_freq_p1_fixed, na.rm = TRUE)
+sum(!is.na(df.c$Pi_social_games_freq_p1_fixed))
+```
+
+## Parent Personality Big 5 Five Factor Model (Study 1)
+
+```{r parent FFM visuals}
+#Neur
+with(df.c, hist(Neur,breaks = 10,
+                          xlab = "Neuroticism",
+                          main = "Neur Personality \n distribution"))
+mean(df.c$Neur, na.rm = TRUE)
+sd(df.c$Neur, na.rm = TRUE)
+range(df.c$Neur, na.rm = TRUE)
+sum(!is.na(df.c$Neur))
+#Openness
+with(df.c, hist(Open,breaks = 10,
+                          xlab = "Openness",
+                          main = "Openness Personality \n distribution"))
+mean(df.c$Open, na.rm = TRUE)
+sd(df.c$Open, na.rm = TRUE)
+range(df.c$Open, na.rm = TRUE)
+sum(!is.na(df.c$Open))
+
+#Conscientiousness
+with(df.c, hist(Cons,breaks = 10,
+                          xlab = "Conscientiousness",
+                          main = "Cons Personality \n distribution"))
+mean(df.c$Cons, na.rm = TRUE)
+sd(df.c$Cons, na.rm = TRUE)
+range(df.c$Cons, na.rm = TRUE)
+sum(!is.na(df.c$Cons))
+
+#Extraversion
+with(df.c, hist(Extra,breaks = 10,
+                          xlab = "Extraversion",
+                          main = "Extra Personality \n distribution"))
+mean(df.c$Extra, na.rm = TRUE)
+sd(df.c$Extra, na.rm = TRUE)
+range(df.c$Extra, na.rm = TRUE)
+sum(!is.na(df.c$Extra))
+
+#Agreeableness
+with(df.c, hist(Agree,breaks = 10,
+                               xlab = "Agreeableness",
+                               main = "Agree Personality \n distribution"))
+mean(df.c$Agree, na.rm = TRUE)
+sd(df.c$Agree, na.rm = TRUE)
+range(df.c$Agree, na.rm = TRUE)
+sum(!is.na(df.c$Agree))
+```
+
+## Parent Personality Six Factor Model (IPIP-6) Study 2
+
+```{r parent 6FM visuals}
+#Openness
+with(df.c, hist(IPIP6_Open,breaks = 10,
+                               xlab = "6FM Openness",
+                               main = "Openness Personality \n distribution"))
+mean(df.c$IPIP6_Open, na.rm = TRUE)
+sd(df.c$IPIP6_Open, na.rm = TRUE)
+range(df.c$IPIP6_Open, na.rm = TRUE)
+sum(!is.na(df.c$IPIP6_Open))
+
+#Neuroticism
+with(df.c, hist(IPIP6_Neur,breaks = 10,
+                               xlab = "6FM Neuroticism",
+                               main = "Neurness Personality \n distribution"))
+mean(df.c$IPIP6_Neur, na.rm = TRUE)
+sd(df.c$IPIP6_Neur, na.rm = TRUE)
+range(df.c$IPIP6_Neur, na.rm = TRUE)
+sum(!is.na(df.c$IPIP6_Neur))
+
+#Conscientiousness
+with(df.c, hist(IPIP6_Cons,breaks = 10,
+                               xlab = "6FM Conscientiousness",
+                               main = "Conscientiousness Personality \n distribution"))
+mean(df.c$IPIP6_Cons, na.rm = TRUE)
+sd(df.c$IPIP6_Cons, na.rm = TRUE)
+range(df.c$IPIP6_Cons, na.rm = TRUE)
+sum(!is.na(df.c$IPIP6_Cons))
+
+#Extra
+with(df.c, hist(IPIP6_Extra,breaks = 10,
+                               xlab = "6FM Exraversion",
+                               main = "Extraversion Personality \n distribution"))
+mean(df.c$IPIP6_Extra, na.rm = TRUE)
+sd(df.c$IPIP6_Extra, na.rm = TRUE)
+range(df.c$IPIP6_Extra, na.rm = TRUE)
+sum(!is.na(df.c$IPIP6_Extra))
+
+#Agreeableness
+with(df.c, hist(IPIP6_Agree,breaks = 10,
+                               xlab = "6FM Agreeableness",
+                               main = "Agreeness Personality \n distribution"))
+mean(df.c$IPIP6_Agree, na.rm = TRUE)
+sd(df.c$IPIP6_Agree, na.rm = TRUE)
+range(df.c$IPIP6_Agree, na.rm = TRUE)
+sum(!is.na(df.c$IPIP6_Agree))
+
+#Honesty-Humility
+with(df.c, hist(IPIP6_HonHum,breaks = 10,
+                               xlab = "6FM Honesty-Humility",
+                               main = "Honesty-Humility Personality \n distribution"))
+mean(df.c$IPIP6_HonHum, na.rm = TRUE)
+sd(df.c$IPIP6_HonHum, na.rm = TRUE)
+range(df.c$IPIP6_HonHum, na.rm = TRUE)
+sum(!is.na(df.c$IPIP6_HonHum))
+```
+
+## Infant Temperament
+
+```{r ibq}
+#Neg
+with(df.c, hist(NEG,breaks = 10,
+                               xlab = "Avg negative aff",
+                               main = "Infant neg temp \n distribution"))
+mean(df.c$NEG, na.rm = TRUE)
+sd(df.c$NEG, na.rm = TRUE)
+range(df.c$NEG, na.rm = TRUE)
+sum(!is.na(df.c$NEG))
+
+#Sur
+with(df.c, hist(SUR,breaks = 10,
+                               xlab = "Avg surgency",
+                               main = "Infant sur \n distribution"))
+mean(df.c$SUR, na.rm = TRUE)
+sd(df.c$SUR, na.rm = TRUE)
+range(df.c$SUR, na.rm = TRUE)
+sum(!is.na(df.c$SUR))
+
+#Reg
+with(df.c, hist(REG,breaks = 10,
+                               xlab = "Avg reg cap",
+                               main = "Infant reg temp \n distribution"))
+mean(df.c$REG, na.rm = TRUE)
+sd(df.c$REG, na.rm = TRUE)
+range(df.c$REG, na.rm = TRUE)
+sum(!is.na(df.c$REG))
+```
+
+## Infant Cooperative Ability - Parallel Roles Task
+
+```{r CA PRT}
+#Parallel roles - Spatial Coordination - STUDY 1
+with(df.c, hist(Avg_SC_PR_P3,breaks = 10,
+                               xlab = "Avg spatial coord score",
+                               main = "Infant spatial coordination \n distribution PRT"))
+mean(df.c$Avg_SC_PR_P3, na.rm = TRUE)
+sd(df.c$Avg_SC_PR_P3, na.rm = TRUE)
+range(df.c$Avg_SC_PR_P3, na.rm = TRUE)
+sum(!is.na(df.c$Avg_SC_PR_P3))
+
+#Parallel roles - Success
+with(df.c, hist(Avg_Succ_PR_P3,breaks = 10,
+                               xlab = "Avg success score",
+                               main = "Infant success score \n distribution PRT"))
+mean(df.c$Avg_Succ_PR_P3, na.rm = TRUE)
+range(df.c$Avg_Succ_PR_P3, na.rm = TRUE)
+sd(df.c$Avg_Succ_PR_P3, na.rm = TRUE)
+sum(!is.na(df.c$Avg_Succ_PR_P3))
+
+
+#Parallel roles - Latency to success
+
+plot(df.c$Avg_Lat_PR_P3)
+mean(df.c$Avg_Lat_PR_P3, na.rm = TRUE)
+sd(df.c$Avg_Lat_PR_P3, na.rm = TRUE)
+range(df.c$Avg_Lat_PR_P3, na.rm = TRUE)
+sum(!is.na(df.c$Avg_Lat_PR_P3))
+
+```
+
+## Infant Cooperative Ability - Complementary Roles Task
+
+```{r CA CRT}
+#Complementary roles - Spatial Coordination
+with(df.c, hist(Avg_SC_FT_P3,breaks = 10,
+                               xlab = "Avg spatial coord score",
+                               main = "Infant spatial coordination \n distribution CRT"))
+mean(df.c$Avg_SC_FT_P3, na.rm = TRUE)
+sd(df.c$Avg_SC_FT_P3, na.rm = TRUE)
+range(df.c$Avg_SC_FT_P3, na.rm = TRUE)
+sum(!is.na(df.c$Avg_SC_FT_P3))
+
+#Complementary roles - Success
+with(df.c, hist(Avg_Succ_FT_P3,breaks = 10,
+                               xlab = "Avg success score",
+                               main = "Infant success score \n distribution CRT"))
+mean(df.c$Avg_Succ_FT_P3, na.rm = TRUE)
+range(df.c$Avg_Succ_FT_P3, na.rm = TRUE)
+sd(df.c$Avg_Succ_FT_P3, na.rm = TRUE)
+sum(!is.na(df.c$Avg_Succ_FT_P3))
+
+#Complementary roles - Latency to success action 1
+with(df.c, hist(Avg_LAT1_FT_P3,breaks = 10,
+                               xlab = "Avg latency 1 score",
+                               main = "Infant latency score \n distribution CRT"))
+plot(df.c$Avg_LAT1_FT_P3)
+mean(df.c$Avg_LAT1_FT_P3, na.rm = TRUE)
+sd(df.c$Avg_LAT1_FT_P3, na.rm = TRUE)
+range(df.c$Avg_LAT1_FT_P3, na.rm = TRUE)
+sum(!is.na(df.c$Avg_LAT1_FT_P3))
+
+#Complementary roles - Latency to success action 2
+with(df.c, hist(Avg_LAT2_FT_P3,breaks = 10,
+                               xlab = "Avg latency 2 score",
+                               main = "Infant latency score \n distribution CRT"))
+plot(df.c$Avg_LAT2_FT_P3)
+mean(df.c$Avg_LAT2_FT_P3, na.rm = TRUE)
+sd(df.c$Avg_LAT2_FT_P3, na.rm = TRUE)
+range(df.c$Avg_LAT2_FT_P3, na.rm = TRUE)
+sum(!is.na(df.c$Avg_LAT2_FT_P3))
+```
 
